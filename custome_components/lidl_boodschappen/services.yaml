@@ -1,0 +1,19 @@
+new_week:
+add_item:
+  fields:
+    name:
+      required: true
+      example: "Appels"
+      selector:
+        text:
+    quantity:
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 99
+          mode: box
+    recurring:
+      default: false
+      selector:
+        boolean:
