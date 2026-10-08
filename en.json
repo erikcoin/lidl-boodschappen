@@ -1,0 +1,67 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lidl Shopping List",
+        "description": "Choose your Lidl web shop and when the list should refresh automatically for a new week.",
+        "data": {
+          "country": "Country",
+          "reset_enabled": "Start new week automatically",
+          "reset_weekday": "Reset day",
+          "reset_hour": "Reset hour (0-23)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Lidl Shopping List is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Lidl Shopping List",
+        "data": {
+          "country": "Country",
+          "reset_enabled": "Start new week automatically",
+          "reset_weekday": "Reset day",
+          "reset_hour": "Reset hour (0-23)"
+        }
+      }
+    }
+  },
+  "selector": {
+    "country": {
+      "options": {
+        "NL": "Netherlands (lidl.nl)",
+        "BE": "Belgium (lidl.be)",
+        "DE": "Germany (lidl.de)"
+      }
+    },
+    "weekday": {
+      "options": {
+        "mon": "Monday",
+        "tue": "Tuesday",
+        "wed": "Wednesday",
+        "thu": "Thursday",
+        "fri": "Friday",
+        "sat": "Saturday",
+        "sun": "Sunday"
+      }
+    }
+  },
+  "services": {
+    "new_week": {
+      "name": "Start new week",
+      "description": "Removes checked one-off items and resets recurring items to 'to buy'."
+    },
+    "add_item": {
+      "name": "Add item",
+      "description": "Adds an item to the shopping list.",
+      "fields": {
+        "name": { "name": "Name", "description": "Product name." },
+        "quantity": { "name": "Quantity", "description": "How many you need." },
+        "recurring": { "name": "Recurring", "description": "Keep on the list every week." }
+      }
+    }
+  }
+}

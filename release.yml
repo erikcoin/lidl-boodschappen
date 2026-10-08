@@ -1,0 +1,38 @@
+name: Release
+
+# Maak een release door een tag te pushen, bijv. v0.1.1.
+# HACS toont releases als updates (en valt anders terug op de laatste commit).
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versie in manifest gelijk zetten aan de tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 - <<EOF
+          import json, pathlib
+          p = pathlib.Path("custom_components/lidl_boodschappen/manifest.json")
+          d = json.loads(p.read_text())
+          d["version"] = "${VERSION}"
+          p.write_text(json.dumps(d, indent=2) + "\n")
+          EOF
+
+      - name: Zip maken
+        run: |
+          cd custom_components/lidl_boodschappen
+          zip -r ../../lidl_boodschappen.zip .
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: lidl_boodschappen.zip
+          generate_release_notes: true
