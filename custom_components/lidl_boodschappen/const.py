@@ -13,7 +13,7 @@ CONF_RESET_HOUR = "reset_hour"
 DEFAULT_COUNTRY = "NL"
 # Lidl's WAF (Myra) weigert onbekende User-Agents maar laat curl door.
 # Instelbaar in de opties, voor het geval Lidl dit aanpast.
-DEFAULT_USER_AGENT = "curl/8.5.0"
+DEFAULT_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36"
 DEFAULT_RESET_ENABLED = True
 DEFAULT_RESET_WEEKDAY = "sat"
 DEFAULT_RESET_HOUR = 6
