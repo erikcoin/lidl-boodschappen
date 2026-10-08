@@ -20,7 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 HEADERS = {
     "Accept": "application/json",
     "Accept-Language": "nl-NL,nl;q=0.9,en;q=0.5",
-    "User-Agent": "HomeAssistant-LidlBoodschappen/0.1 (persoonlijk gebruik)",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36",
 }
 
 
