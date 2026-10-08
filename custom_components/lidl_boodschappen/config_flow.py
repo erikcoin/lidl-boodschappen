@@ -15,11 +15,13 @@ from .const import (
     CONF_RESET_ENABLED,
     CONF_RESET_HOUR,
     CONF_RESET_WEEKDAY,
+    CONF_USER_AGENT,
     COUNTRIES,
     DEFAULT_COUNTRY,
     DEFAULT_RESET_ENABLED,
     DEFAULT_RESET_HOUR,
     DEFAULT_RESET_WEEKDAY,
+    DEFAULT_USER_AGENT,
     DOMAIN,
     WEEKDAYS,
 )
@@ -53,6 +55,10 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0, max=23, step=1, mode="box")
             ),
+            vol.Required(
+                CONF_USER_AGENT,
+                default=defaults.get(CONF_USER_AGENT, DEFAULT_USER_AGENT),
+            ): selector.TextSelector(),
         }
     )
 

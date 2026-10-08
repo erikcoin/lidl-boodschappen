@@ -5,11 +5,15 @@ from __future__ import annotations
 DOMAIN = "lidl_boodschappen"
 
 CONF_COUNTRY = "country"
+CONF_USER_AGENT = "user_agent"
 CONF_RESET_ENABLED = "reset_enabled"
 CONF_RESET_WEEKDAY = "reset_weekday"
 CONF_RESET_HOUR = "reset_hour"
 
 DEFAULT_COUNTRY = "NL"
+# Lidl's WAF (Myra) weigert onbekende User-Agents maar laat curl door.
+# Instelbaar in de opties, voor het geval Lidl dit aanpast.
+DEFAULT_USER_AGENT = "curl/8.5.0"
 DEFAULT_RESET_ENABLED = True
 DEFAULT_RESET_WEEKDAY = "sat"
 DEFAULT_RESET_HOUR = 6

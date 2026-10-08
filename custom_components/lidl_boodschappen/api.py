@@ -13,15 +13,10 @@ from typing import Any
 
 import aiohttp
 
-from .const import COUNTRIES, SEARCH_CACHE_SECONDS, SEARCH_LIMIT
+from .const import COUNTRIES, DEFAULT_USER_AGENT, SEARCH_CACHE_SECONDS, SEARCH_LIMIT
 
 _LOGGER = logging.getLogger(__name__)
 
-HEADERS = {
-    "Accept": "application/json",
-    "Accept-Language": "nl-NL,nl;q=0.9,en;q=0.5",
-    "User-Agent": "HomeAssistant-LidlBoodschappen/0.1 (persoonlijk gebruik)",
-}
 
 
 class LidlApiError(Exception):
@@ -115,8 +110,15 @@ def parse_item(raw: dict[str, Any], base_url: str) -> dict[str, Any] | None:
 class LidlClient:
     """Zoekt producten op de Lidl-site, met een kleine cache."""
 
-    def __init__(self, session: aiohttp.ClientSession, country: str) -> None:
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        country: str,
+        user_agent: str = DEFAULT_USER_AGENT,
+    ) -> None:
         self._session = session
+        # Zelfde minimale headers als curl; dat is wat Lidl's WAF doorlaat.
+        self._headers = {"User-Agent": user_agent or DEFAULT_USER_AGENT, "Accept": "*/*"}
         self._base_url, self._locale, self._assortment = COUNTRIES.get(
             country, COUNTRIES["NL"]
         )
@@ -144,7 +146,7 @@ class LidlClient:
             async with self._session.get(
                 f"{self._base_url}/q/api/search",
                 params=params,
-                headers=HEADERS,
+                headers=self._headers,
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 if resp.status != 200:

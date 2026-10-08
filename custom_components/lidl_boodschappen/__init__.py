@@ -25,10 +25,12 @@ from .const import (
     CONF_RESET_ENABLED,
     CONF_RESET_HOUR,
     CONF_RESET_WEEKDAY,
+    CONF_USER_AGENT,
     DEFAULT_COUNTRY,
     DEFAULT_RESET_ENABLED,
     DEFAULT_RESET_HOUR,
     DEFAULT_RESET_WEEKDAY,
+    DEFAULT_USER_AGENT,
     DOMAIN,
     PANEL_ICON,
     PANEL_TITLE,
@@ -83,7 +85,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     manager = ShoppingManager(hass)
     await manager.async_load()
     client = LidlClient(
-        async_get_clientsession(hass), options.get(CONF_COUNTRY, DEFAULT_COUNTRY)
+        async_get_clientsession(hass),
+        options.get(CONF_COUNTRY, DEFAULT_COUNTRY),
+        options.get(CONF_USER_AGENT, DEFAULT_USER_AGENT),
     )
     hass.data[DOMAIN]["runtime"] = {"manager": manager, "client": client}
 

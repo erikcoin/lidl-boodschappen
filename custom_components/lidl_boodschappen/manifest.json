@@ -3,11 +3,16 @@
   "name": "Lidl Boodschappen",
   "codeowners": [],
   "config_flow": true,
-  "dependencies": ["http", "frontend", "panel_custom", "websocket_api"],
+  "dependencies": [
+    "http",
+    "frontend",
+    "panel_custom",
+    "websocket_api"
+  ],
   "documentation": "https://github.com/JOUW_GEBRUIKERSNAAM/lidl-boodschappen",
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/JOUW_GEBRUIKERSNAAM/lidl-boodschappen/issues",
   "requirements": [],
-  "version": "0.1.0"
+  "version": "0.1.1"
 }
