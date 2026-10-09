@@ -31,6 +31,8 @@ _OG_RE = re.compile(
     r'<meta[^>]+property=["\']og:(title|image)["\'][^>]+content=["\']([^"\']*)["\']',
     re.IGNORECASE,
 )
+_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+_TITLE_SUFFIX_RE = re.compile(r"\s*[|–-]\s*ALDI(?:\s+\w+)?\s*$", re.IGNORECASE)
 _OG_RE_REVERSED = re.compile(
     r'<meta[^>]+content=["\']([^"\']*)["\'][^>]+property=["\']og:(title|image)["\']',
     re.IGNORECASE,
@@ -75,12 +77,26 @@ def parse_sitemap(xml: str) -> list[dict[str, str]]:
 
 
 def parse_product_page(page: str) -> dict[str, str]:
-    """Lees og:title en og:image uit een productpagina."""
+    """Lees de titel (uit <title>) en og:image uit een productpagina.
+
+    Let op: og:title is op aldi.nl alleen "Product"; de echte naam, bijvoorbeeld
+    "Appels 6 stuks van Pink Lady | ALDI", staat in de <title>.
+    """
     found: dict[str, str] = {}
+    og: dict[str, str] = {}
     for kind, value in _OG_RE.findall(page):
-        found.setdefault(kind.lower(), html.unescape(value).strip())
+        og.setdefault(kind.lower(), html.unescape(value).strip())
     for value, kind in _OG_RE_REVERSED.findall(page):
-        found.setdefault(kind.lower(), html.unescape(value).strip())
+        og.setdefault(kind.lower(), html.unescape(value).strip())
+
+    match = _TITLE_RE.search(page)
+    if match:
+        title = html.unescape(re.sub(r"\s+", " ", match.group(1))).strip()
+        title = _TITLE_SUFFIX_RE.sub("", title).strip()
+        if title and title.lower() != "product":
+            found["title"] = title
+    if og.get("image"):
+        found["image"] = og["image"]
     return found
 
 
