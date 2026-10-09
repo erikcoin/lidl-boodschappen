@@ -4,9 +4,18 @@ from __future__ import annotations
 
 DOMAIN = "aldi_boodschappen"
 
+CONF_APP_ID = "app_id"
+CONF_API_KEY = "api_key"
 CONF_RESET_ENABLED = "reset_enabled"
 CONF_RESET_WEEKDAY = "reset_weekday"
 CONF_RESET_HOUR = "reset_hour"
+
+# Application ID is geen geheim (het staat in elke zoek-URL van aldi.nl); de
+# API-sleutel vul je zelf in bij het instellen.
+DEFAULT_APP_ID = "2HU29PF6BH"
+ALGOLIA_INDEX = "an_prd_nl_nl_products2"
+PRODUCT_BASE_URL = "https://www.aldi.nl/product"
+USER_AGENT = "HomeAssistant-AldiBoodschappen/0.3 (persoonlijk gebruik)"
 
 DEFAULT_RESET_ENABLED = True
 DEFAULT_RESET_WEEKDAY = "sat"
@@ -14,13 +23,7 @@ DEFAULT_RESET_HOUR = 6
 
 WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
-# Aldi publiceert de productpagina's in deze sitemap (robots.txt staat dat toe).
-SITEMAP_URL = "https://www.aldi.nl/sitemaps/.aldi-nord-sitemap-products.xml"
-USER_AGENT = "HomeAssistant-AldiBoodschappen/0.2 (persoonlijk gebruik)"
-CATALOG_MAX_AGE = 7 * 24 * 3600  # catalogus hooguit één keer per week verversen
-
 STORAGE_KEY = f"{DOMAIN}.items"
-CATALOG_STORAGE_KEY = f"{DOMAIN}.catalog"
 STORAGE_VERSION = 1
 
 SIGNAL_UPDATED = f"{DOMAIN}_updated"
@@ -31,3 +34,4 @@ PANEL_ICON = "mdi:cart"
 STATIC_URL = "/aldi_boodschappen_static"
 
 SEARCH_LIMIT = 48
+SEARCH_CACHE_SECONDS = 600

@@ -3,16 +3,22 @@
     "step": {
       "user": {
         "title": "Aldi Shopping List",
-        "description": "Choose when the list should refresh automatically for a new week.",
+        "description": "Search uses aldi.nl's own search service. For the key: open aldi.nl, press F12, choose Network → Fetch/XHR, search the web shop and look at the request to algolia.net: the value of x-algolia-api-key.",
         "data": {
           "reset_enabled": "Start new week automatically",
           "reset_weekday": "Reset day",
-          "reset_hour": "Reset hour (0-23)"
+          "reset_hour": "Reset hour (0-23)",
+          "app_id": "Algolia Application ID",
+          "api_key": "Algolia API key (search only)"
         }
       }
     },
     "abort": {
       "already_configured": "Aldi Shopping List is already configured."
+    },
+    "error": {
+      "invalid_auth": "Aldi rejected this key or Application ID. Check them and try again.",
+      "cannot_connect": "Could not reach Aldi's search service. Try again later."
     }
   },
   "options": {
@@ -22,9 +28,15 @@
         "data": {
           "reset_enabled": "Start new week automatically",
           "reset_weekday": "Reset day",
-          "reset_hour": "Reset hour (0-23)"
+          "reset_hour": "Reset hour (0-23)",
+          "app_id": "Algolia Application ID",
+          "api_key": "Algolia API key (search only)"
         }
       }
+    },
+    "error": {
+      "invalid_auth": "Aldi rejected this key or Application ID. Check them and try again.",
+      "cannot_connect": "Could not reach Aldi's search service. Try again later."
     }
   },
   "selector": {

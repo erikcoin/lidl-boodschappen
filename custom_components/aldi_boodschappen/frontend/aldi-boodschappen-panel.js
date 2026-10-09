@@ -188,6 +188,7 @@ class AldiBoodschappenPanel extends HTMLElement {
         <div class="img"${p.image ? ` style="background:#fff url('${escapeHtml(p.image)}') center/contain no-repeat"` : ""}>${p.image ? "" : "🛒"}</div>
         <div class="body">
           <div class="name">${escapeHtml(p.name)}</div>
+          ${p.available === false ? `<div class="meta">Nu niet beschikbaar</div>` : ""}
           ${p.brand ? `<div class="meta">${escapeHtml(p.brand)}</div>` : ""}
           ${p.description ? `<div class="meta">${escapeHtml(p.description)}</div>` : ""}
           <div><span class="price">${money(p.price, p.currency)}</span>${p.old_price ? `<span class="old">${money(p.old_price, p.currency)}</span>` : ""}</div>
@@ -215,7 +216,7 @@ class AldiBoodschappenPanel extends HTMLElement {
         const thumb = it.image
           ? `<img src="${escapeHtml(it.image)}" alt="">`
           : `<div class="ph">🛒</div>`;
-        const sub = [it.brand, it.price != null ? money(it.price * it.quantity, it.currency) : ""]
+        const sub = [it.description, it.price != null ? money(it.price * it.quantity, it.currency) : ""]
           .filter(Boolean)
           .join(" · ");
         const nameHtml = it.url

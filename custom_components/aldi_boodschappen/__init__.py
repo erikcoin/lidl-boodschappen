@@ -18,16 +18,17 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.event import async_track_time_change
-from homeassistant.helpers.storage import Store
 
 from .api import AldiApiError, AldiClient
 from .const import (
-    CATALOG_STORAGE_KEY,
+    CONF_API_KEY,
+    CONF_APP_ID,
     CONF_RESET_ENABLED,
     CONF_RESET_HOUR,
     CONF_RESET_WEEKDAY,
     DEFAULT_RESET_ENABLED,
     DEFAULT_RESET_HOUR,
+    DEFAULT_APP_ID,
     DEFAULT_RESET_WEEKDAY,
     DOMAIN,
     PANEL_ICON,
@@ -35,7 +36,6 @@ from .const import (
     PANEL_URL,
     SIGNAL_UPDATED,
     STATIC_URL,
-    STORAGE_VERSION,
     WEEKDAYS,
 )
 from .manager import ShoppingManager
@@ -85,7 +85,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await manager.async_load()
     client = AldiClient(
         async_get_clientsession(hass),
-        Store(hass, STORAGE_VERSION, CATALOG_STORAGE_KEY),
+        options.get(CONF_APP_ID, DEFAULT_APP_ID),
+        options.get(CONF_API_KEY, ""),
     )
     hass.data[DOMAIN]["runtime"] = {"manager": manager, "client": client}
 
@@ -210,17 +211,13 @@ def ws_items(hass: HomeAssistant, connection, msg) -> None:
         vol.Optional("recurring", default=False): cv.boolean,
     }
 )
-@websocket_api.async_response
-async def ws_add(hass: HomeAssistant, connection, msg) -> None:
+@callback
+def ws_add(hass: HomeAssistant, connection, msg) -> None:
     runtime = _ensure_runtime(hass, connection, msg)
     if runtime is None:
         return
-    product = msg.get("product")
-    if product:
-        # Foto en merknaam ophalen (best effort, valt stil terug bij een fout)
-        product = await runtime["client"].enrich(product)
     item = runtime["manager"].add(
-        msg["name"], product, msg["quantity"], msg["recurring"]
+        msg["name"], msg.get("product"), msg["quantity"], msg["recurring"]
     )
     connection.send_result(msg["id"], {"item": item})
 

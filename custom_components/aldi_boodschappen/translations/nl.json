@@ -3,16 +3,22 @@
     "step": {
       "user": {
         "title": "Aldi Boodschappen",
-        "description": "Kies wanneer de lijst automatisch ververst moet worden voor een nieuwe week.",
+        "description": "Zoeken gebruikt de zoekdienst van aldi.nl. Voor de sleutel: open aldi.nl, druk op F12, kies Netwerk → Fetch/XHR, zoek op iets in de webshop en kijk bij het verzoek naar algolia.net: de waarde van x-algolia-api-key.",
         "data": {
           "reset_enabled": "Automatisch nieuwe week starten",
           "reset_weekday": "Dag van de reset",
-          "reset_hour": "Uur van de reset (0-23)"
+          "reset_hour": "Uur van de reset (0-23)",
+          "app_id": "Algolia Application ID",
+          "api_key": "Algolia API-sleutel (alleen zoeken)"
         }
       }
     },
     "abort": {
       "already_configured": "Aldi Boodschappen is al ingesteld."
+    },
+    "error": {
+      "invalid_auth": "Aldi weigert deze sleutel of Application ID. Controleer ze en probeer het opnieuw.",
+      "cannot_connect": "Kon de zoekdienst van Aldi niet bereiken. Probeer het later opnieuw."
     }
   },
   "options": {
@@ -22,9 +28,15 @@
         "data": {
           "reset_enabled": "Automatisch nieuwe week starten",
           "reset_weekday": "Dag van de reset",
-          "reset_hour": "Uur van de reset (0-23)"
+          "reset_hour": "Uur van de reset (0-23)",
+          "app_id": "Algolia Application ID",
+          "api_key": "Algolia API-sleutel (alleen zoeken)"
         }
       }
+    },
+    "error": {
+      "invalid_auth": "Aldi weigert deze sleutel of Application ID. Controleer ze en probeer het opnieuw.",
+      "cannot_connect": "Kon de zoekdienst van Aldi niet bereiken. Probeer het later opnieuw."
     }
   },
   "selector": {

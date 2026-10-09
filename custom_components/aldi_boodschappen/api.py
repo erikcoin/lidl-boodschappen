@@ -1,247 +1,171 @@
-"""Productcatalogus van aldi.nl.
+"""Zoeken in het Aldi-assortiment via de zoekdienst die aldi.nl zelf gebruikt.
 
-Aldi heeft geen zoek-API. Wel publiceert aldi.nl een sitemap met alle
-productpagina's (toegestaan volgens robots.txt). We halen die lijst hooguit
-één keer per week op, bewaren hem lokaal en zoeken daar zelf in. Het zoekveld
-doet dus geen verzoeken naar Aldi. Pas bij het toevoegen van een product halen
-we die ene pagina op voor foto en merknaam.
+De webshop zoekt via Algolia. We sturen dezelfde zoekopdracht als de site naar
+de producten-index en vragen een beperkt aantal resultaten op. De sleutel is de
+(openbare, alleen-zoeken) sleutel die aldi.nl naar elke bezoeker stuurt; die
+stel je in bij het instellen van de integratie en staat niet in deze code.
 
-Aldi toont op de productpagina's geen prijzen; die nemen we dus niet mee.
+Dit is niet-officieel: Aldi kan de sleutel vervangen of de index hernoemen.
 """
 
 from __future__ import annotations
 
-import html
 import logging
-import re
 import time
-import unicodedata
-from typing import Any, Protocol
+from typing import Any
 
 import aiohttp
 
-from .const import CATALOG_MAX_AGE, SEARCH_LIMIT, SITEMAP_URL, USER_AGENT
+from .const import (
+    ALGOLIA_INDEX,
+    PRODUCT_BASE_URL,
+    SEARCH_CACHE_SECONDS,
+    SEARCH_LIMIT,
+    USER_AGENT,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-_LOC_RE = re.compile(
-    r"<loc>\s*(https?://[^<\s]+/product/([^<\s/]+?)-(\d{5,})\.html)\s*</loc>"
-)
-_OG_RE = re.compile(
-    r'<meta[^>]+property=["\']og:(title|image)["\'][^>]+content=["\']([^"\']*)["\']',
-    re.IGNORECASE,
-)
-_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
-_TITLE_SUFFIX_RE = re.compile(r"\s*[|–-]\s*ALDI(?:\s+\w+)?\s*$", re.IGNORECASE)
-_OG_RE_REVERSED = re.compile(
-    r'<meta[^>]+content=["\']([^"\']*)["\'][^>]+property=["\']og:(title|image)["\']',
-    re.IGNORECASE,
-)
-
 
 class AldiApiError(Exception):
-    """Fout bij het ophalen van de Aldi-catalogus."""
+    """Fout bij het zoeken."""
 
 
-class StoreLike(Protocol):
-    async def async_load(self) -> Any: ...
-    async def async_save(self, data: Any) -> None: ...
+class AldiAuthError(AldiApiError):
+    """Sleutel of Application ID wordt niet geaccepteerd."""
 
 
-def normalize(text: str) -> str:
-    """Kleine letters, zonder accenten, leestekens als spatie."""
-    text = unicodedata.normalize("NFKD", text.lower())
-    text = "".join(c for c in text if not unicodedata.combining(c))
-    return re.sub(r"[^a-z0-9]+", " ", text).strip()
+def _pretty_brand(brand: Any) -> str | None:
+    """'PINK LADY' -> 'Pink Lady'; laat merken met kleine letters ongemoeid."""
+    if not isinstance(brand, str) or not brand.strip():
+        return None
+    brand = brand.strip()
+    return brand.title() if brand.isupper() else brand
 
 
-def name_from_slug(slug: str) -> str:
-    """'volle-kwark' -> 'Volle kwark'."""
-    words = slug.replace("-", " ").strip()
-    return words[:1].upper() + words[1:]
+def _primary_image(assets: Any) -> str | None:
+    if not isinstance(assets, list):
+        return None
+    urls = [a for a in assets if isinstance(a, dict) and a.get("url")]
+    for asset in urls:
+        if asset.get("type") == "primary":
+            return asset["url"]
+    return urls[0]["url"] if urls else None
 
 
-def parse_sitemap(xml: str) -> list[dict[str, str]]:
-    """Haal product-URL's uit de sitemap en leid de naam af uit de slug."""
-    products: list[dict[str, str]] = []
+def parse_hit(hit: Any) -> dict[str, Any] | None:
+    """Zet één Algolia-hit om naar een compact product."""
+    if not isinstance(hit, dict):
+        return None
+    base_name = hit.get("name")
+    if not isinstance(base_name, str) or not base_name.strip():
+        return None
+
+    brand = _pretty_brand(hit.get("brandName"))
+    name = f"{base_name.strip()} {brand}" if brand else base_name.strip()
+
+    slug = hit.get("productSlug")
+    code = hit.get("objectID") or slug or name
+    url = f"{PRODUCT_BASE_URL}/{slug}.html" if slug else None
+
+    price_obj = hit.get("currentPrice")
+    price = None
+    if isinstance(price_obj, dict):
+        try:
+            price = float(price_obj["priceValue"])
+        except (KeyError, TypeError, ValueError):
+            price = None
+
+    unit = hit.get("salesUnit")
+    return {
+        "code": str(code),
+        "name": name,
+        "brand": None,  # zit al in de naam
+        "description": unit if isinstance(unit, str) and unit else None,
+        "price": price,
+        "old_price": None,
+        "base_price": None,
+        "currency": "€",
+        "image": _primary_image(hit.get("assets")),
+        "url": url,
+        "available": hit.get("isAvailable") is not False,
+    }
+
+
+def parse_response(payload: Any) -> list[dict[str, Any]]:
+    """Haal de producten uit het Algolia-antwoord (results[0].hits)."""
+    results = payload.get("results") if isinstance(payload, dict) else None
+    if not isinstance(results, list) or not results or not isinstance(results[0], dict):
+        raise AldiApiError("Onverwacht antwoord van de Aldi-zoekdienst")
+    hits = results[0].get("hits")
+    if not isinstance(hits, list):
+        raise AldiApiError("Onverwacht antwoord van de Aldi-zoekdienst")
+
+    products: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for url, slug, code in _LOC_RE.findall(xml):
-        if code in seen:
-            continue
-        seen.add(code)
-        name = name_from_slug(slug)
-        products.append(
-            {"code": code, "name": name, "url": url, "norm": normalize(name)}
-        )
+    for hit in hits:
+        product = parse_hit(hit)
+        if product and product["code"] not in seen:
+            seen.add(product["code"])
+            products.append(product)
+    # Beschikbare producten eerst (sorteren is stabiel; de volgorde van Aldi blijft)
+    products.sort(key=lambda p: not p["available"])
     return products
 
 
-def parse_product_page(page: str) -> dict[str, str]:
-    """Lees de titel (uit <title>) en og:image uit een productpagina.
-
-    Let op: og:title is op aldi.nl alleen "Product"; de echte naam, bijvoorbeeld
-    "Appels 6 stuks van Pink Lady | ALDI", staat in de <title>.
-    """
-    found: dict[str, str] = {}
-    og: dict[str, str] = {}
-    for kind, value in _OG_RE.findall(page):
-        og.setdefault(kind.lower(), html.unescape(value).strip())
-    for value, kind in _OG_RE_REVERSED.findall(page):
-        og.setdefault(kind.lower(), html.unescape(value).strip())
-
-    match = _TITLE_RE.search(page)
-    if match:
-        title = html.unescape(re.sub(r"\s+", " ", match.group(1))).strip()
-        title = _TITLE_SUFFIX_RE.sub("", title).strip()
-        if title and title.lower() != "product":
-            found["title"] = title
-    if og.get("image"):
-        found["image"] = og["image"]
-    return found
-
-
-def _score(norm_name: str, terms: list[str]) -> int | None:
-    """Lager = beter. None = geen match (alle zoekwoorden moeten voorkomen)."""
-    words = norm_name.split()
-    score = 0
-    for term in terms:
-        if term not in norm_name:
-            return None
-        if any(w == term for w in words):
-            score += 0  # heel woord
-        elif any(w.startswith(term) for w in words):
-            score += 2  # begin van een woord
-        else:
-            score += 4  # komt alleen midden in een woord voor
-    if words and not words[0].startswith(terms[0]):
-        score += 1
-    return score
-
-
 class AldiClient:
-    """Catalogus + lokaal zoeken + details per product."""
+    """Zoekt producten bij Aldi, met een kleine cache."""
 
     def __init__(
-        self, session: aiohttp.ClientSession, store: StoreLike | None = None
+        self, session: aiohttp.ClientSession, app_id: str, api_key: str
     ) -> None:
         self._session = session
-        self._store = store
-        self._catalog: list[dict[str, str]] = []
-        self._fetched_at: float = 0.0
-        self._loaded = False
-        self._details: dict[str, dict[str, str]] = {}
-
-    @property
-    def catalog_size(self) -> int:
-        return len(self._catalog)
-
-    async def _load_from_store(self) -> None:
-        if self._loaded:
-            return
-        self._loaded = True
-        if self._store is None:
-            return
-        data = await self._store.async_load()
-        if isinstance(data, dict) and data.get("products"):
-            self._catalog = data["products"]
-            self._fetched_at = float(data.get("fetched_at", 0))
-
-    async def _get_text(self, url: str) -> str:
-        try:
-            async with self._session.get(
-                url,
-                headers={"User-Agent": USER_AGENT, "Accept": "*/*"},
-                timeout=aiohttp.ClientTimeout(total=30),
-            ) as resp:
-                if resp.status != 200:
-                    body = (await resp.text())[:200].replace("\n", " ")
-                    _LOGGER.warning(
-                        "Aldi gaf status %s voor %s (server=%s, antwoord=%r)",
-                        resp.status,
-                        url,
-                        resp.headers.get("Server", "?"),
-                        body,
-                    )
-                    raise AldiApiError(f"Aldi gaf status {resp.status}")
-                return await resp.text()
-        except (aiohttp.ClientError, TimeoutError) as err:
-            raise AldiApiError(f"Kon Aldi niet bereiken: {err}") from err
-
-    async def async_refresh(self, force: bool = False) -> None:
-        """Ververs de catalogus als die ontbreekt of ouder is dan een week."""
-        await self._load_from_store()
-        age = time.time() - self._fetched_at
-        if self._catalog and not force and age < CATALOG_MAX_AGE:
-            return
-        try:
-            xml = await self._get_text(SITEMAP_URL)
-            products = parse_sitemap(xml)
-            if not products:
-                raise AldiApiError("Geen producten gevonden in de Aldi-sitemap")
-        except AldiApiError:
-            if self._catalog:
-                _LOGGER.warning("Verversen mislukt, ik gebruik de oude catalogus")
-                return
-            raise
-        self._catalog = products
-        self._fetched_at = time.time()
-        _LOGGER.debug("Aldi-catalogus ververst: %s producten", len(products))
-        if self._store is not None:
-            await self._store.async_save(
-                {"fetched_at": self._fetched_at, "products": products}
-            )
+        self._app_id = app_id.strip()
+        self._url = f"https://{self._app_id.lower()}-dsn.algolia.net/1/indexes/*/queries"
+        self._headers = {
+            "X-Algolia-Application-Id": self._app_id,
+            "X-Algolia-API-Key": api_key.strip(),
+            "Content-Type": "application/json",
+            "User-Agent": USER_AGENT,
+        }
+        self._cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
     async def search(self, query: str, limit: int = SEARCH_LIMIT) -> list[dict[str, Any]]:
-        terms = normalize(query).split()
-        if not terms or len(normalize(query)) < 2:
+        query = query.strip()
+        if len(query) < 2:
             return []
-        await self.async_refresh()
 
-        scored: list[tuple[int, str, dict[str, str]]] = []
-        for product in self._catalog:
-            score = _score(product["norm"], terms)
-            if score is not None:
-                scored.append((score, product["name"], product))
-        scored.sort(key=lambda t: (t[0], len(t[1]), t[1]))
+        key = f"{query.lower()}|{limit}"
+        cached = self._cache.get(key)
+        if cached and time.monotonic() - cached[0] < SEARCH_CACHE_SECONDS:
+            return cached[1]
 
-        return [self._public(p) for _, _, p in scored[:limit]]
-
-    @staticmethod
-    def _public(product: dict[str, str]) -> dict[str, Any]:
-        return {
-            "code": product["code"],
-            "name": product["name"],
-            "brand": None,
-            "description": None,
-            "price": None,
-            "old_price": None,
-            "base_price": None,
-            "currency": "€",
-            "image": None,
-            "url": product["url"],
+        body = {
+            "requests": [
+                {"indexName": ALGOLIA_INDEX, "query": query, "hitsPerPage": limit}
+            ]
         }
+        try:
+            async with self._session.post(
+                self._url,
+                json=body,
+                headers=self._headers,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                if resp.status != 200:
+                    text = (await resp.text())[:300].replace("\n", " ")
+                    _LOGGER.warning(
+                        "Aldi-zoekdienst gaf status %s: %r", resp.status, text
+                    )
+                    if resp.status in (401, 403):
+                        raise AldiAuthError(
+                            f"Sleutel of Application ID geweigerd (status {resp.status})"
+                        )
+                    raise AldiApiError(f"Aldi-zoekdienst gaf status {resp.status}")
+                payload = await resp.json(content_type=None)
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise AldiApiError(f"Kon de Aldi-zoekdienst niet bereiken: {err}") from err
 
-    async def enrich(self, product: dict[str, Any]) -> dict[str, Any]:
-        """Vul foto en naam aan vanuit de productpagina (best effort)."""
-        url = product.get("url")
-        code = str(product.get("code") or "")
-        if not url or not url.startswith("https://www.aldi.nl/product/"):
-            return product
-
-        details = self._details.get(code)
-        if details is None:
-            try:
-                page = await self._get_text(url)
-            except AldiApiError:
-                return product  # geen foto is niet erg; het product blijft bruikbaar
-            details = parse_product_page(page)
-            self._details[code] = details
-
-        result = dict(product)
-        if details.get("image") and not result.get("image"):
-            result["image"] = details["image"]
-        title = details.get("title")
-        if title:
-            # Titel is "MERK Productnaam"; bewaar de volledige titel als naam.
-            result["name"] = title
-        return result
+        products = parse_response(payload)
+        self._cache[key] = (time.monotonic(), products)
+        return products
