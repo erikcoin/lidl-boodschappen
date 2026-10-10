@@ -31,6 +31,12 @@ CHECKJEBON_URL = (
     "https://raw.githubusercontent.com/supermarkt/checkjebon/main/data/supermarkets.json"
 )
 HOOGVLIET_BASE_URL = "https://www.hoogvliet.com"
+HOOGVLIET_SEARCH_URL = "https://hoogvliet.nl/search/{query}"
+CONF_HOOGVLIET_SOURCE = "hoogvliet_source"
+HOOGVLIET_SOURCE_CHECKJEBON = "checkjebon"
+HOOGVLIET_SOURCE_WEBSITE = "website"
+HOOGVLIET_SOURCES = [HOOGVLIET_SOURCE_CHECKJEBON, HOOGVLIET_SOURCE_WEBSITE]
+DEFAULT_HOOGVLIET_SOURCE = HOOGVLIET_SOURCE_CHECKJEBON
 HOOGVLIET_STORAGE_KEY = f"{DOMAIN}.hoogvliet"
 HOOGVLIET_MAX_AGE = 24 * 3600
 HOOGVLIET_MAX_BYTES = 250 * 1024 * 1024  # veiligheidsgrens voor de download

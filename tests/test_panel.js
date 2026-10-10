@@ -47,7 +47,7 @@ assert.strictEqual(names(r), "abcde", "de bronlijst blijft ongewijzigd");
 console.log("ok: totalen en sorteren kloppen");
 
 assert.strictEqual(itemUrl({ url: "https://x/y", store: "aldi", name: "a" }), "https://x/y");
-assert.strictEqual(itemUrl({ store: "hoogvliet", name: "pink lady" }), "https://www.hoogvliet.com/search/pink%20lady");
+assert.strictEqual(itemUrl({ store: "hoogvliet", name: "pink lady" }), "https://hoogvliet.nl/search/pink%20lady");
 assert.strictEqual(itemUrl({ store: "aldi", name: "melk" }), "https://www.aldi.nl/zoeken.html?query=melk");
 assert.strictEqual(itemUrl({ name: "" }), null);
 console.log("itemUrl ok");

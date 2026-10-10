@@ -27,7 +27,7 @@ except ImportError:
         ClientSession=object, ClientError=Exception, ClientTimeout=lambda **k: None
     )
 
-for name in ("const", "api", "pricing", "hoogvliet", "search"):
+for name in ("const", "api", "pricing", "hoogvliet", "hoogvliet_web", "search"):
     spec = importlib.util.spec_from_file_location(f"ab2.{name}", root / f"{name}.py")
     mod = importlib.util.module_from_spec(spec)
     sys.modules[f"ab2.{name}"] = mod
@@ -37,6 +37,7 @@ api = sys.modules["ab2.api"]
 pricing = sys.modules["ab2.pricing"]
 hoogvliet = sys.modules["ab2.hoogvliet"]
 search = sys.modules["ab2.search"]
+web = sys.modules["ab2.hoogvliet_web"]
 
 # ---------------------------------------------------------------- eenheden
 ps = pricing.parse_size
@@ -82,11 +83,11 @@ sample = [
     {
         "n": "Hoogvliet",
         "d": [
-            {"n": "Pink Lady appels", "p": 2.49, "s": "4 stuks", "l": "/product/pink-lady-1"},
-            {"n": "Volle kwark", "p": 1.19, "s": "500 g", "l": "https://www.hoogvliet.com/product/volle-kwark-2"},
+            {"n": "Pink Lady appels", "p": 2.49, "s": "4 stuks", "l": "/product/pink-lady-appels-726992000"},
+            {"n": "Volle kwark", "p": 1.19, "s": "500 g", "l": "https://www.hoogvliet.com/product/volle-kwark-123456789"},
             {"n": "Magere kwark vanille", "p": 1.29, "s": "500 g"},
-            {"n": "Kwarkbollen", "p": 1.99, "s": "6 stuks", "l": "/product/kwarkbollen-3"},
-            {"n": "Volle kwark", "p": 1.19, "s": "500 g", "l": "https://www.hoogvliet.com/product/volle-kwark-2"},  # dubbel
+            {"n": "Kwarkbollen", "p": 1.99, "s": "6 stuks", "l": "/product/kwarkbollen-333333333"},
+            {"n": "Volle kwark", "p": 1.19, "s": "500 g", "l": "https://www.hoogvliet.com/product/volle-kwark-123456789"},  # dubbel
             {"n": "Gratis ding", "p": 0, "s": "1 stuk"},        # prijs 0: overslaan
             {"n": "Kapot", "p": "veel", "s": "1 stuk"},         # prijs geen getal: overslaan
             {"p": 1.0},                                          # geen naam: overslaan
@@ -96,9 +97,20 @@ sample = [
 ]
 parsed = hoogvliet.parse_checkjebon(json.dumps(sample))
 assert [x["name"] for x in parsed] == ["Pink Lady appels", "Volle kwark", "Magere kwark vanille", "Kwarkbollen"], parsed
-assert parsed[0]["url"] == "https://www.hoogvliet.com/product/pink-lady-1", "relatieve link krijgt het domein"
+assert parsed[0]["url"] == "https://www.hoogvliet.com/product/pink-lady-appels-726992000", "relatieve link krijgt het domein"
 assert parsed[2]["url"] is None
 assert parsed[0]["code"].startswith("hoogvliet:")
+
+# Echte vorm (Checkjebon, okt 2026): winkel heeft 'u', producten alleen n/l/p/s, en 'l' is een
+# slug die Checkjebon zelf uit de naam maakt, zonder productnummer -> dus geen bruikbare link
+real_shape = [{"n": "hoogvliet", "u": "https://www.hoogvliet.com/product/", "d": [
+    {"n": "Pink lady Pink lady op schaal", "l": "pink-lady-pink-lady-op-schaal", "p": 3.59, "s": "4 stuks"}]}]
+rp = hoogvliet.parse_checkjebon(json.dumps(real_shape))[0]
+assert rp["url"] is None, "slug zonder nummer is geen echte link"
+assert rp["name"] == "Pink lady op schaal", rp["name"]
+assert rp["code"] == "hoogvliet:Pink lady Pink lady op schaal|4 stuks", "code blijft op de originele naam"
+assert hoogvliet.clean_name("Hak Pink Lady appelmoes") == "Hak Pink Lady appelmoes"
+assert hoogvliet.clean_name("Melk") == "Melk"
 
 # andere vormen en fouten geven een nette fout, geen crash
 for bad in ("{niet json", json.dumps({"x": 1}), json.dumps([{"n": "Jumbo", "d": []}]),
@@ -130,7 +142,7 @@ assert hv("PINK lady") == ["Pink Lady appels"]
 assert hv("volle kwark") == ["Volle kwark"] and hv("x") == [] and hv("bestaatniet") == []
 res = asyncio.run(client.search("pink"))[0]
 assert res["store"] == "hoogvliet" and res["store_name"] == "Hoogvliet" and res["price"] == 2.49
-assert res["description"] == "4 stuks" and res["image"] is None
+assert res["description"] == "4 stuks" and res["image"] == "https://static.hoogvliet.nl/ecom/product/726992000.jpg"
 
 empty = hoogvliet.HoogvlietClient(session=None)
 empty._loaded = True
@@ -301,3 +313,81 @@ assert _l("pink lady!") is None and _l("") is None and _l(None) is None
 assert _l("pink-lady-726992000", "https://www.hoogvliet.com/product/") == full
 assert hoogvliet.image_url(_l("pink-lady-726992000")) == "https://static.hoogvliet.nl/ecom/product/726992000.jpg"
 print("linkvormen ok")
+
+
+# ---------------------------------------------------------------- live zoeken (aangenomen paginavorm)
+# 1. ingebedde JSON
+page_json = (
+    '<html><script id="__NEXT_DATA__" type="application/json">'
+    + json.dumps({"props": {"hits": [
+        {"title": "Pink lady Appels op schaal", "price": {"value": 3.59}, "url": "/product/pink-lady-appels-op-schaal-726992000", "packSize": "4 stuks"},
+        {"title": "Zonder prijs", "url": "/product/x-111111111"},
+        {"title": "Melk", "price": 1.1, "productNumber": 123456789},
+    ]}})
+    + "</script></html>"
+)
+res = web.parse_search_page(page_json)
+assert [x["name"] for x in res] == ["Pink lady Appels op schaal", "Melk"], res
+assert res[0]["url"] == "https://hoogvliet.nl/product/pink-lady-appels-op-schaal-726992000"
+assert res[0]["image"] == "https://static.hoogvliet.nl/ecom/product/726992000.jpg" and res[0]["size"] == "4 stuks"
+assert res[1]["image"] == "https://static.hoogvliet.nl/ecom/product/123456789.jpg"
+# 2. links in de HTML
+page_html = (
+    '<a href="/product/pink-lady-appels-op-schaal-726992000"><img alt="x"><span>Pink lady Appels op schaal</span> € 3,59</a>'
+    '<a href="/product/geen-prijs-222222222">alleen tekst</a>'
+)
+res = web.parse_search_page(page_html)
+assert len(res) == 1 and res[0]["price"] == 3.59 and res[0]["name"] == "Pink lady Appels op schaal", res
+# 3. onbekende pagina: leeg, en de client geeft een nette fout
+assert web.parse_search_page("<html>niets</html>") == []
+
+
+class WebSession:
+    def __init__(self, body, status=200):
+        self.body, self.status, self.calls = body, status, 0
+
+    def get(self, url, **kw):
+        self.calls += 1
+        outer = self
+
+        class Ctx:
+            async def __aenter__(s):
+                return types.SimpleNamespace(
+                    status=outer.status,
+                    content=types.SimpleNamespace(read=lambda n: _aread(outer.body)),
+                )
+
+            async def __aexit__(s, *a):
+                return False
+
+        return Ctx()
+
+
+async def _aread(b):
+    return b
+
+
+web.MIN_INTERVAL = 0
+sess = WebSession(page_json.encode())
+ws = web.HoogvlietWebSearch(sess)
+assert len(asyncio.run(ws.search("Pink Lady"))) == 2
+assert len(asyncio.run(ws.search("pink  lady"))) == 2 and sess.calls == 1, "tweede keer uit het geheugen"
+for bad in (WebSession(b"<html></html>"), WebSession(b"", status=403)):
+    try:
+        asyncio.run(web.HoogvlietWebSearch(bad).search("x"))
+    except hoogvliet.HoogvlietError:
+        pass
+    else:
+        raise AssertionError("verwachtte fout")
+
+# de Hoogvliet-client gebruikt live resultaten, en valt bij een fout terug op Checkjebon
+live = hoogvliet.HoogvlietClient(session=None, web=web.HoogvlietWebSearch(WebSession(page_json.encode())))
+out = asyncio.run(live.search("pink lady"))
+assert out[0]["name"] == "Pink lady Appels op schaal" and out[0]["code"].startswith("hoogvliet:web:")
+assert out[0]["image"].endswith("726992000.jpg") and out[0]["store"] == "hoogvliet"
+fallback = hoogvliet.HoogvlietClient(session=None, web=web.HoogvlietWebSearch(WebSession(b"", status=503)))
+fallback._products = parsed
+fallback._fetched_at = 10**12
+fallback._loaded = True
+assert [x["name"] for x in asyncio.run(fallback.search("kwark"))][:1] == ["Volle kwark"], "terugval op Checkjebon"
+print("ok: live zoeken (JSON, HTML, terugval) klopt")

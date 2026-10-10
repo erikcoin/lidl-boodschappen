@@ -46,7 +46,7 @@ function itemUrl(it) {
   if (it.url) return it.url;
   const q = encodeURIComponent(it.name || "");
   if (!q) return null;
-  if (it.store === "hoogvliet") return `https://www.hoogvliet.com/search/${q}`;
+  if (it.store === "hoogvliet") return `https://hoogvliet.nl/search/${q}`;
   if (it.store === "aldi") return `https://www.aldi.nl/zoeken.html?query=${q}`;
   return null;
 }

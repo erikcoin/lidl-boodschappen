@@ -146,6 +146,13 @@ class ShoppingManager:
             self._changed()
         return changed
 
+    def repair_items(self, fix) -> int:
+        """Pas `fix(item) -> bool` toe op alle items (bv. foute link of naam herstellen)."""
+        changed = sum(1 for item in self.items if fix(item))
+        if changed:
+            self._changed()
+        return changed
+
     def new_week(self) -> None:
         """Nieuwe week: afgevinkte eenmalige items weg, terugkerende weer 'te halen'."""
         self.items = [

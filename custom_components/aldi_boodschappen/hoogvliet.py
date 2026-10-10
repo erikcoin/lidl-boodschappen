@@ -117,7 +117,16 @@ _PATH_RE = re.compile(r"[A-Za-z0-9._~%/-]+")
 
 # Verwerking van het Checkjebon-bestand. Ophogen als de uitkomst anders wordt, zodat
 # een eerder opgeslagen catalogus meteen opnieuw wordt opgebouwd.
-PARSER_VERSION = 2
+PARSER_VERSION = 3
+
+
+def clean_name(name: str) -> str:
+    """Haal een dubbel voorvoegsel weg: 'Pink lady Pink lady op schaal' -> 'Pink lady op schaal'."""
+    words = name.split()
+    for k in range(1, len(words) // 2 + 1):
+        if [w.lower() for w in words[:k]] == [w.lower() for w in words[k : 2 * k]]:
+            return " ".join(words[k:])
+    return name
 
 
 def _link(value: Any, base: Any = None) -> str | None:
@@ -210,6 +219,10 @@ def parse_checkjebon(raw: bytes | str) -> list[dict[str, Any]]:
             base,
         )
         name = name.strip()
+        # Checkjebon maakt de link zelf van de naam; de echte productlink eindigt op een
+        # productnummer. Zonder nummer is de link onbruikbaar (404), dus niet bewaren.
+        if link and not product_id(link):
+            link = None
         # Altijd naam + hoeveelheid, ook als er een link is: zo blijft de code gelijk
         # tussen versies, en dus ook voor producten die al op de lijst staan.
         code = f"{name}|{size or ''}"
@@ -219,7 +232,7 @@ def parse_checkjebon(raw: bytes | str) -> list[dict[str, Any]]:
         products.append(
             {
                 "code": f"{STORE_HOOGVLIET}:{code}",
-                "name": name,
+                "name": clean_name(name),
                 "size": size if isinstance(size, str) and size else None,
                 "price": price,
                 "url": link,
@@ -234,11 +247,8 @@ def parse_checkjebon(raw: bytes | str) -> list[dict[str, Any]]:
         )
         raise HoogvlietError("Geen bruikbare Hoogvliet-producten in de Checkjebon-data")
     if not any(p["url"] for p in products):
-        # Zonder link zijn er geen klikbare producten en geen foto's: laat zien wat er wél staat
-        _LOGGER.warning(
-            "Geen bruikbare productlinks in de Hoogvliet-data. Velden van de winkel: %s. Voorbeeld: %r",
-            sorted(store),
-            raw_products[:2],
+        _LOGGER.info(
+            "Checkjebon geeft geen productnummers voor Hoogvliet: geen eigen link of foto per product"
         )
     return products
 
@@ -246,8 +256,14 @@ def parse_checkjebon(raw: bytes | str) -> list[dict[str, Any]]:
 class HoogvlietClient:
     """Lokale Hoogvliet-catalogus, ververst hooguit één keer per dag."""
 
-    def __init__(self, session: aiohttp.ClientSession, store: StoreLike | None = None) -> None:
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        store: StoreLike | None = None,
+        web: Any = None,
+    ) -> None:
         self._session = session
+        self._web = web  # HoogvlietWebSearch als de gebruiker live zoeken koos
         self._store = store
         self._products: list[dict[str, Any]] = []
         self._fetched_at = 0.0
@@ -337,6 +353,20 @@ class HoogvlietClient:
             self._task = asyncio.ensure_future(self.async_refresh_safe())
 
     async def search(self, query: str, limit: int = SEARCH_LIMIT) -> list[dict[str, Any]]:
+        if len(normalize(query)) < 2:
+            return []
+        if self._web is not None:
+            try:
+                found = await self._web.search(query)
+            except AldiApiError as err:
+                # Live zoeken mislukt: de gebruiker heeft er toch wat aan met de prijslijst
+                _LOGGER.warning("Zoeken op hoogvliet.nl mislukt (%s); Checkjebon-data gebruikt", err)
+            else:
+                return [self._public_web(p) for p in found[:limit]]
+        return await self.lookup(query, limit)
+
+    async def lookup(self, query: str, limit: int = SEARCH_LIMIT) -> list[dict[str, Any]]:
+        """Zoeken in de lokale Checkjebon-catalogus (geen verzoek naar Hoogvliet)."""
         terms = normalize(query).split()
         if not terms or len(normalize(query)) < 2:
             return []
@@ -358,6 +388,26 @@ class HoogvlietClient:
         scored.sort(key=lambda t: t[:3])
 
         return [self._public(p) for *_, p in scored[:limit]]
+
+    @staticmethod
+    def _public_web(product: dict[str, Any]) -> dict[str, Any]:
+        key = product.get("pid") or f"{product['name']}|{product.get('size') or ''}"
+        return {
+            "code": f"{STORE_HOOGVLIET}:web:{key}",
+            "name": product["name"],
+            "brand": None,
+            "description": product.get("size"),
+            "price": product["price"],
+            "price_valid_until": None,
+            "old_price": None,
+            "base_price": None,
+            "currency": "€",
+            "image": product.get("image"),
+            "url": product.get("url"),
+            "available": True,
+            "store": STORE_HOOGVLIET,
+            "store_name": STORE_LABELS[STORE_HOOGVLIET],
+        }
 
     @staticmethod
     def _public(product: dict[str, Any]) -> dict[str, Any]:

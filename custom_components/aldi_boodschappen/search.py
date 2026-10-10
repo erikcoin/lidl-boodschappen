@@ -29,11 +29,11 @@ class SearchService:
         return list(self._clients)
 
     async def _search_each(
-        self, query: str, limit: int
+        self, query: str, limit: int, background: bool = False
     ) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
         names = list(self._clients)
         outcomes = await asyncio.gather(
-            *(self._clients[n].search(query, limit) for n in names),
+            *(self._search_one(n, query, limit, background) for n in names),
             return_exceptions=True,
         )
         found: dict[str, list[dict[str, Any]]] = {}
@@ -53,6 +53,13 @@ class SearchService:
             # Niets gelukt: laat de gebruiker de oorzaak zien in plaats van "niets gevonden"
             raise AldiApiError("; ".join(warnings))
         return found, warnings
+
+    async def _search_one(self, name: str, query: str, limit: int, background: bool):
+        client = self._clients[name]
+        # Op de achtergrond (prijzen verversen) geen live verzoeken naar winkelsites die dat
+        # apart aanbieden: die gebruiken dan hun lokale gegevens.
+        local = getattr(client, "lookup", None) if background else None
+        return await (local or client.search)(query, limit)
 
     async def search(
         self, query: str, limit: int = SEARCH_LIMIT
@@ -74,7 +81,7 @@ class SearchService:
 
     async def lookup(self, query: str) -> list[dict[str, Any]]:
         """Alle resultaten van alle winkels, zonder afkappen (om prijzen bij te werken)."""
-        found, _ = await self._search_each(query, SEARCH_LIMIT)
+        found, _ = await self._search_each(query, SEARCH_LIMIT, background=True)
         return [product for products in found.values() for product in products]
 
     async def enrich(self, product: dict[str, Any]) -> dict[str, Any]:

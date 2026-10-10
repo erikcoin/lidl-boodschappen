@@ -45,7 +45,8 @@ from .const import (
     STORE_HOOGVLIET,
     WEEKDAYS,
 )
-from .hoogvliet import HoogvlietClient, image_url
+from .hoogvliet_web import HoogvlietWebSearch
+from .hoogvliet import HoogvlietClient, clean_name, image_url, product_id
 from .manager import ShoppingManager
 from .search import SearchService
 
@@ -136,10 +137,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             options.get(CONF_API_KEY, ""),
         )
     if STORE_HOOGVLIET in stores:
+        live = options.get(CONF_HOOGVLIET_SOURCE) == HOOGVLIET_SOURCE_WEBSITE
         hoogvliet = HoogvlietClient(
-            session, Store(hass, STORAGE_VERSION, HOOGVLIET_STORAGE_KEY)
+            session,
+            Store(hass, STORAGE_VERSION, HOOGVLIET_STORAGE_KEY),
+            web=HoogvlietWebSearch(session) if live else None,
         )
         clients[STORE_HOOGVLIET] = hoogvliet
+
+        def _repair_hoogvliet(item: dict) -> bool:
+            if item.get("store") != STORE_HOOGVLIET:
+                return False
+            changed = False
+            if item.get("url") and not product_id(item["url"]):
+                # Eerdere versies bewaarden een gegokte link zonder productnummer: die klopt niet
+                item["url"] = None
+                changed = True
+            cleaned = clean_name(item.get("name") or "")
+            if cleaned and cleaned != item.get("name"):
+                item["name"] = cleaned
+                changed = True
+            return changed
+
+        manager.repair_items(_repair_hoogvliet)
 
         def _backfill_hoogvliet() -> None:
             # Producten die al op de lijst staan: ontbrekende link en foto aanvullen

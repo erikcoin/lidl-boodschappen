@@ -14,12 +14,15 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import AldiApiError, AldiAuthError, AldiClient
 from .const import (
     CONF_API_KEY,
+    CONF_HOOGVLIET_SOURCE,
     CONF_APP_ID,
     CONF_RESET_ENABLED,
     CONF_RESET_HOUR,
     CONF_RESET_WEEKDAY,
     CONF_STORES,
     DEFAULT_APP_ID,
+    DEFAULT_HOOGVLIET_SOURCE,
+    HOOGVLIET_SOURCES,
     DEFAULT_RESET_ENABLED,
     DEFAULT_RESET_HOUR,
     DEFAULT_RESET_WEEKDAY,
@@ -39,6 +42,14 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=STORES, multiple=True, translation_key="stores"
+                )
+            ),
+            vol.Required(
+                CONF_HOOGVLIET_SOURCE,
+                default=defaults.get(CONF_HOOGVLIET_SOURCE, DEFAULT_HOOGVLIET_SOURCE),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=HOOGVLIET_SOURCES, translation_key="hoogvliet_source"
                 )
             ),
             vol.Required(
