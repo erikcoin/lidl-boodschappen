@@ -2,7 +2,7 @@
 
 Boodschappenlijst met producten van **Aldi** en/of **Hoogvliet**, met prijzen. Kies in de instellingen in welke winkels je zoekt; kies je beide, dan zie je welk product het goedkoopst is.
 
-- Typ een zoekterm (bijv. *pink lady*) en kies uit alle gevonden producten, met hoeveelheid en prijs (bij Aldi ook met foto).
+- Typ een zoekterm (bijv. *pink lady*) en kies uit alle gevonden producten, met foto, hoeveelheid en prijs.
 - **Prijzen vergelijken**: zoeken gaat over alle gekozen winkels tegelijk. Elk resultaat toont de prijs per kg, liter of stuk, je kunt sorteren op laagste prijs, en het goedkoopste product per eenheid krijgt een label.
 - Markeer per product of het **elke week** terug moet komen.
 - **Totaalprijs** van wat je nog moet halen, met een apart bedrag voor wat al in de wagen ligt en, als je bij meerdere winkels koopt, een subtotaal per winkel.
@@ -31,9 +31,10 @@ De sleutel wordt bij het opslaan met een proefzoekopdracht gecontroleerd.
 
 hoogvliet.nl verbiedt in `robots.txt` voor bots het zoekpad (`/search`) en de Intershop-API waar de webshop zijn data vandaan haalt. Daar maakt deze integratie dan ook **geen** gebruik van. In plaats daarvan gebruikt hij de open prijsdata van [Checkjebon](https://github.com/supermarkt/checkjebon) (MIT-licentie; de data mag volgens het project hergebruikt worden):
 
-- Het bestand wordt hooguit één keer per dag opgehaald, op de achtergrond, en alleen de Hoogvliet-producten worden lokaal bewaard. Zoeken doet dus geen verzoeken naar Hoogvliet.
+- Het bestand wordt hooguit één keer per dag opgehaald, op de achtergrond, en alleen de Hoogvliet-producten worden lokaal bewaard. Zoeken doet dus geen verzoeken naar Hoogvliet; alleen het toevoegen van een product zonder afleidbaar productnummer doet er één (zie bij Foto's).
 - Het eerste ophalen duurt even (het bestand bevat alle supermarkten). Zoek je daarvoor al, dan krijg je een melding dat de prijzen nog worden opgehaald, en de Aldi-resultaten staan er gewoon.
-- Dit zijn de prijzen zoals Checkjebon ze het laatst heeft vastgelegd, **geen live prijzen** van de webshop, en er zijn **geen foto's**. Check voor het boodschappen doen de prijs van belangrijke producten.
+- Dit zijn de prijzen zoals Checkjebon ze het laatst heeft vastgelegd, **geen live prijzen** van de webshop. Check voor het boodschappen doen de prijs van belangrijke producten.
+- **Foto's**: Checkjebon heeft geen foto's, maar Hoogvliet zet ze op een voorspelbaar adres (`static.hoogvliet.nl/ecom/product/<productnummer>.jpg`) en het productnummer staat achter in de productlink. De integratie leidt het adres daaruit af, zonder iets bij Hoogvliet op te halen; je browser laadt de foto zelf. Staat er geen productnummer in de link, dan haalt de integratie, alleen voor het product dat je op je lijst zet, één keer de productpagina op om het nummer te vinden. Lukt dat niet, of weigert Hoogvliet de foto, dan zie je een winkelwagen-icoon in plaats van een kapotte afbeelding. Producten die je al op je lijst had krijgen hun foto automatisch.
 - Het bestand is groot. Op een Raspberry Pi met weinig geheugen kan het verwerken veel werkgeheugen kosten; kies dan alleen Aldi.
 - De structuur van het Checkjebon-bestand is niet door mij kunnen worden bekeken toen ik dit bouwde. De verwerking is defensief geschreven, en bij een onverwachte structuur staat in het log welke winkels er wel in stonden. Zet voor details `custom_components.aldi_boodschappen: debug` aan.
 

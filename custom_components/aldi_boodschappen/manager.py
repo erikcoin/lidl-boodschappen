@@ -117,6 +117,20 @@ class ShoppingManager:
             self._changed()
         return changed
 
+    def backfill_images(self, image_for) -> int:
+        """Geef bestaande items zonder foto er een, als `image_for(item)` die kan bepalen."""
+        changed = 0
+        for item in self.items:
+            if item.get("image") or not item.get("url"):
+                continue
+            image = image_for(item)
+            if image:
+                item["image"] = image
+                changed += 1
+        if changed:
+            self._changed()
+        return changed
+
     def new_week(self) -> None:
         """Nieuwe week: afgevinkte eenmalige items weg, terugkerende weer 'te halen'."""
         self.items = [

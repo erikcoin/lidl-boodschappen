@@ -7,7 +7,12 @@ voor hergebruik. We halen dat bestand hooguit één keer per dag op, bewaren all
 de Hoogvliet-producten lokaal en zoeken daar zelf in.
 
 LET OP: dit zijn de prijzen zoals Checkjebon ze het laatst heeft vastgelegd, geen
-live prijzen van de webshop, en er zijn geen foto's.
+live prijzen van de webshop.
+
+Foto's: Checkjebon heeft die niet, maar Hoogvliet zet ze op een voorspelbaar adres,
+https://static.hoogvliet.nl/ecom/product/<productnummer>.jpg, en het productnummer
+staat achter in de productlink. We leiden het adres dus af uit de link, zonder iets
+bij Hoogvliet op te halen; de browser laadt de foto zelf.
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ import re
 import time
 import unicodedata
 from typing import Any, Protocol
+from urllib.parse import urlparse
 
 import aiohttp
 
@@ -76,6 +82,33 @@ def _score(norm_name: str, terms: list[str]) -> int | None:
     if words and not words[0].startswith(terms[0]):
         score += 1
     return score
+
+
+IMAGE_URL = "https://static.hoogvliet.nl/ecom/product/{id}.jpg"
+_HOSTS = ("hoogvliet.com", "www.hoogvliet.com", "hoogvliet.nl", "www.hoogvliet.nl")
+_OG_IMAGE_RE = re.compile(
+    r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\'](https://[^"\']+)["\']',
+    re.IGNORECASE,
+)
+_OG_IMAGE_RE_REVERSED = re.compile(
+    r'<meta[^>]+content=["\'](https://[^"\']+)["\'][^>]+property=["\']og:image["\']',
+    re.IGNORECASE,
+)
+
+
+def product_id(url: Any) -> str | None:
+    """'…/product/pink-lady-appels-op-schaal-726992000' -> '726992000'."""
+    if not isinstance(url, str):
+        return None
+    path = urlparse(url).path.rstrip("/")
+    match = re.search(r"[-/](\d{6,})(?:\.\w+)?$", path)
+    return match.group(1) if match else None
+
+
+def image_url(url: Any) -> str | None:
+    """Foto-adres afleiden uit een productlink, of None als er geen productnummer in staat."""
+    pid = product_id(url)
+    return IMAGE_URL.format(id=pid) if pid else None
 
 
 def _link(value: Any) -> str | None:
@@ -274,9 +307,43 @@ class HoogvlietClient:
             "old_price": None,
             "base_price": None,
             "currency": "€",
-            "image": None,
+            "image": image_url(product.get("url")),
             "url": product.get("url"),
             "available": True,
             "store": STORE_HOOGVLIET,
             "store_name": STORE_LABELS[STORE_HOOGVLIET],
         }
+
+    async def enrich(self, product: dict[str, Any]) -> dict[str, Any]:
+        """Foto zoeken voor een product waar het adres niet uit de link af te leiden was.
+
+        Eén verzoek naar de productpagina (een pad dat robots.txt toestaat), en alleen
+        voor het product dat de gebruiker op de lijst zet. Mislukt het, dan blijft het
+        product gewoon bruikbaar, zonder foto.
+        """
+        url = product.get("url")
+        if product.get("image") or not isinstance(url, str):
+            return product
+        if urlparse(url).hostname not in _HOSTS:
+            return product
+        image = await self._resolve_image(url)
+        return {**product, "image": image} if image else product
+
+    async def _resolve_image(self, url: str) -> str | None:
+        try:
+            async with self._session.get(
+                url,
+                allow_redirects=False,
+                headers={"User-Agent": USER_AGENT},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if 300 <= resp.status < 400:
+                    # hoogvliet.com/product/<naam> stuurt door naar .../<naam>-<productnummer>
+                    return image_url(resp.headers.get("Location"))
+                if resp.status == 200:
+                    page = (await resp.content.read(300_000)).decode("utf-8", "ignore")
+                    match = _OG_IMAGE_RE.search(page) or _OG_IMAGE_RE_REVERSED.search(page)
+                    return match.group(1) if match else None
+        except (aiohttp.ClientError, TimeoutError):
+            return None
+        return None

@@ -109,4 +109,17 @@ m.update(a["id"], quantity=3)
 total = sum(i["price"] * i["quantity"] for i in m.items if not i["checked"] and i.get("price") is not None)
 assert round(total, 2) == 10.47, total
 
+# bestaande items zonder foto krijgen er een als die afleidbaar is; bestaande foto's blijven
+m2 = manager_mod.ShoppingManager(hass=None)
+m2.items = [
+    {"id": "1", "name": "a", "url": "https://hoogvliet.nl/product/x-726992000", "image": None, "store": "hoogvliet"},
+    {"id": "2", "name": "b", "url": "https://hoogvliet.nl/product/y-111111111", "image": "https://al.eens/foto.jpg", "store": "hoogvliet"},
+    {"id": "3", "name": "c", "url": "https://www.aldi.nl/product/z-1.html", "image": None, "store": "aldi"},
+    {"id": "4", "name": "d", "image": None},
+]
+n = m2.backfill_images(lambda i: "IMG:" + i["id"] if i.get("store") == "hoogvliet" else None)
+assert n == 1 and m2.items[0]["image"] == "IMG:1" and m2.items[1]["image"] == "https://al.eens/foto.jpg"
+assert m2.items[2]["image"] is None and m2.items[3]["image"] is None
+assert m2.backfill_images(lambda i: None) == 0
+
 print("ok:", len(products), "producten uit antwoord verwerkt, prijzen en totaal kloppen")

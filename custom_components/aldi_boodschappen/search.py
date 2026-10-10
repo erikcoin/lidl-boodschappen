@@ -76,3 +76,18 @@ class SearchService:
         """Alle resultaten van alle winkels, zonder afkappen (om prijzen bij te werken)."""
         found, _ = await self._search_each(query, SEARCH_LIMIT)
         return [product for products in found.values() for product in products]
+
+    async def enrich(self, product: dict[str, Any]) -> dict[str, Any]:
+        """Vul een gekozen product aan (bijv. met een foto) als de winkel dat kan.
+
+        Best effort: een fout hier mag het toevoegen aan de lijst nooit tegenhouden.
+        """
+        client = self._clients.get(product.get("store"))
+        enrich = getattr(client, "enrich", None)
+        if enrich is None:
+            return product
+        try:
+            return await enrich(product)
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Product aanvullen mislukt", exc_info=True)
+            return product

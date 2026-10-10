@@ -195,4 +195,95 @@ assert len(merged) == 2 and warnings == ["Aldi: onverwachte fout"], warnings
 svc = search.SearchService({"aldi": Fake(aldi_items), "hoogvliet": Fake(hv_items)})
 assert {x["code"] for x in asyncio.run(svc.lookup("x1"))} == {"a1", "a2", "a3", "h1", "h2"}
 
+# ---------------------------------------------------------------- Hoogvliet-foto's
+# Echte voorbeelden van hoogvliet.nl: de og:image van deze productpagina is
+# https://static.hoogvliet.nl/ecom/product/726992000.jpg
+real = "https://hoogvliet.nl/product/pink-lady-appels-op-schaal-726992000"
+assert hoogvliet.product_id(real) == "726992000"
+assert hoogvliet.image_url(real) == "https://static.hoogvliet.nl/ecom/product/726992000.jpg"
+assert hoogvliet.image_url(real + "/?utm=1#x") == "https://static.hoogvliet.nl/ecom/product/726992000.jpg"
+assert hoogvliet.image_url("https://www.hoogvliet.com/product/726992000") == "https://static.hoogvliet.nl/ecom/product/726992000.jpg"
+assert hoogvliet.image_url("https://www.hoogvliet.com/product/pink-lady-appels-op-schaal") is None, "geen nummer in de link"
+assert hoogvliet.image_url("https://x.nl/product/jaar-2026") is None, "te kort om een productnummer te zijn"
+assert hoogvliet.image_url(None) is None and hoogvliet.image_url("") is None
+
+with_id = hoogvliet.HoogvlietClient(session=None)
+with_id._products = [{"code": "hoogvliet:1", "name": "Pink Lady appels", "size": "4 stuks", "price": 2.49, "url": real, "norm": "pink lady appels"}]
+with_id._fetched_at, with_id._loaded = 10**12, True
+found = asyncio.run(with_id.search("pink"))[0]
+assert found["image"] == "https://static.hoogvliet.nl/ecom/product/726992000.jpg", "foto zonder enig verzoek afgeleid"
+
+
+class FakeResp:
+    def __init__(self, status, headers=None, body=b""):
+        self.status, self.headers = status, headers or {}
+        self.content = types.SimpleNamespace(read=self._read)
+        self._body = body
+
+    async def _read(self, n):
+        return self._body[:n]
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+
+class FakeSession:
+    def __init__(self, resp=None, error=None):
+        self.resp, self.error, self.urls = resp, error, []
+
+    def get(self, url, **kw):
+        self.urls.append((url, kw.get("allow_redirects")))
+        if self.error:
+            raise self.error
+        return self.resp
+
+
+def enrich(session, product):
+    return asyncio.run(hoogvliet.HoogvlietClient(session=session).enrich(product))
+
+
+no_id = {"url": "https://www.hoogvliet.com/product/pink-lady-appels-op-schaal", "image": None, "name": "x"}
+# 1. de link zonder nummer stuurt door naar een link mét nummer: daar halen we de foto uit
+redirect = FakeSession(FakeResp(302, {"Location": real}))
+out = enrich(redirect, no_id)
+assert out["image"] == "https://static.hoogvliet.nl/ecom/product/726992000.jpg"
+assert redirect.urls == [(no_id["url"], False)], "één verzoek, zonder de doorverwijzing te volgen"
+# 2. geen doorverwijzing, wel een og:image in de pagina
+page = b'<head><meta property="og:image" content="https://static.hoogvliet.nl/ecom/product/5555555.jpg"></head>'
+assert enrich(FakeSession(FakeResp(200, body=page)), no_id)["image"].endswith("/5555555.jpg")
+# 3. mislukt, onbekend of niets te vinden: product blijft gewoon bruikbaar, zonder foto
+assert enrich(FakeSession(FakeResp(404)), no_id) == no_id
+assert enrich(FakeSession(error=TimeoutError()), no_id) == no_id, "time-out: product blijft bruikbaar"
+assert enrich(FakeSession(FakeResp(200, body=b"<html></html>")), no_id) == no_id
+# 4. geen verzoek als het niet nodig is of niet van Hoogvliet is
+untouched = FakeSession(FakeResp(500))
+already = {**no_id, "image": "https://static.hoogvliet.nl/ecom/product/1.jpg"}
+assert enrich(untouched, already) == already
+assert enrich(untouched, {**no_id, "url": "https://evil.example/product/x"})["image"] is None
+assert enrich(untouched, {"url": None, "image": None}) == {"url": None, "image": None}
+assert untouched.urls == [], "geen enkel verzoek gedaan"
+
+
+class Boom:
+    async def search(self, q, limit=48):
+        return []
+
+    async def enrich(self, product):
+        raise RuntimeError("boem")
+
+
+class NoEnrich:
+    async def search(self, q, limit=48):
+        return []
+
+
+prod = {"store": "aldi", "name": "x"}
+svc = search.SearchService({"aldi": NoEnrich(), "hoogvliet": Boom()})
+assert asyncio.run(svc.enrich(prod)) == prod, "winkel zonder enrich: ongewijzigd"
+assert asyncio.run(svc.enrich({"store": "hoogvliet", "name": "y"})) == {"store": "hoogvliet", "name": "y"}, "fout: ongewijzigd"
+assert asyncio.run(svc.enrich({"name": "los"})) == {"name": "los"}, "zonder winkel: ongewijzigd"
+
 print("ok: eenheden, goedkoopst, Checkjebon-verwerking, zoeken en samenvoegen kloppen")

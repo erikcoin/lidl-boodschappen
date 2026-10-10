@@ -97,6 +97,18 @@ class AldiBoodschappenPanel extends HTMLElement {
     this._searchSeq = 0;
     this._rendered = false;
     this.attachShadow({ mode: "open" });
+    // Een foto die niet laadt (bijv. door hotlink-beveiliging) wordt het winkelwagen-icoon, geen kapot plaatje
+    this.shadowRoot.addEventListener(
+      "error",
+      (e) => {
+        if (e.target && e.target.tagName === "IMG") {
+          const icon = document.createElement("span");
+          icon.textContent = "🛒";
+          e.target.replaceWith(icon);
+        }
+      },
+      true
+    );
   }
 
   set hass(hass) {
@@ -154,6 +166,7 @@ class AldiBoodschappenPanel extends HTMLElement {
         .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:12px; margin:12px 0 24px; }
         .card { background:var(--card-background-color); border-radius:12px; box-shadow:var(--ha-card-box-shadow, 0 1px 3px rgba(0,0,0,.2)); display:flex; flex-direction:column; overflow:hidden; }
         .card .img { height:90px; background:var(--secondary-background-color) center/contain no-repeat; display:flex; align-items:center; justify-content:center; font-size:34px; }
+        .card .img img { max-width:100%; max-height:100%; object-fit:contain; background:#fff; }
         .card .body { padding:10px; display:flex; flex-direction:column; gap:4px; flex:1; }
         .card .name { font-size:14px; font-weight:500; line-height:1.25; }
         .card .meta { font-size:12px; color:var(--secondary-text-color); }
@@ -284,7 +297,7 @@ class AldiBoodschappenPanel extends HTMLElement {
       .map(
         (p, i) => `
       <div class="card${p.cheapest ? " cheap" : ""}">
-        <div class="img"${p.image ? ` style="background:#fff url('${escapeHtml(p.image)}') center/contain no-repeat"` : ""}>${p.image ? "" : "🛒"}</div>
+        <div class="img">${p.image ? `<img src="${escapeHtml(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : "🛒"}</div>
         <div class="body">
           <div class="badges">
             ${p.store_name ? `<span class="badge">${escapeHtml(p.store_name)}</span>` : ""}
@@ -342,7 +355,7 @@ class AldiBoodschappenPanel extends HTMLElement {
     el.innerHTML = sorted
       .map((it) => {
         const thumb = it.image
-          ? `<img src="${escapeHtml(it.image)}" alt="">`
+          ? `<img src="${escapeHtml(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
           : `<div class="ph">🛒</div>`;
         const sub = [it.store_name, it.description, it.price != null ? money(it.price * it.quantity, it.currency) : ""]
           .filter(Boolean)

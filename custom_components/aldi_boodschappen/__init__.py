@@ -45,7 +45,7 @@ from .const import (
     STORE_HOOGVLIET,
     WEEKDAYS,
 )
-from .hoogvliet import HoogvlietClient
+from .hoogvliet import HoogvlietClient, image_url
 from .manager import ShoppingManager
 from .search import SearchService
 
@@ -119,6 +119,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     manager = ShoppingManager(hass)
     await manager.async_load()
+    # Hoogvliet-producten die vóór de foto-ondersteuning zijn toegevoegd: foto uit de link afleiden
+    manager.backfill_images(
+        lambda item: image_url(item["url"]) if item.get("store") == STORE_HOOGVLIET else None
+    )
     session = async_get_clientsession(hass)
 
     # Winkels waarin gezocht wordt (instelbaar). Bestaande installaties zonder
@@ -277,13 +281,16 @@ def ws_items(hass: HomeAssistant, connection, msg) -> None:
         vol.Optional("recurring", default=False): cv.boolean,
     }
 )
-@callback
-def ws_add(hass: HomeAssistant, connection, msg) -> None:
+@websocket_api.async_response
+async def ws_add(hass: HomeAssistant, connection, msg) -> None:
     runtime = _ensure_runtime(hass, connection, msg)
     if runtime is None:
         return
+    product = msg.get("product")
+    if product:
+        product = await runtime["search"].enrich(product)  # bijv. een foto, best effort
     item = runtime["manager"].add(
-        msg["name"], msg.get("product"), msg["quantity"], msg["recurring"]
+        msg["name"], product, msg["quantity"], msg["recurring"]
     )
     connection.send_result(msg["id"], {"item": item})
 
