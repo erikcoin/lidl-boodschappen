@@ -18,11 +18,15 @@ from .const import (
     CONF_RESET_ENABLED,
     CONF_RESET_HOUR,
     CONF_RESET_WEEKDAY,
+    CONF_STORES,
     DEFAULT_APP_ID,
     DEFAULT_RESET_ENABLED,
     DEFAULT_RESET_HOUR,
     DEFAULT_RESET_WEEKDAY,
+    DEFAULT_STORES,
     DOMAIN,
+    STORE_ALDI,
+    STORES,
     WEEKDAYS,
 )
 
@@ -31,9 +35,16 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
     return vol.Schema(
         {
             vol.Required(
+                CONF_STORES, default=defaults.get(CONF_STORES) or DEFAULT_STORES
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=STORES, multiple=True, translation_key="stores"
+                )
+            ),
+            vol.Required(
                 CONF_APP_ID, default=defaults.get(CONF_APP_ID, DEFAULT_APP_ID)
             ): selector.TextSelector(),
-            vol.Required(
+            vol.Optional(
                 CONF_API_KEY, default=defaults.get(CONF_API_KEY, "")
             ): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
@@ -61,7 +72,19 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
 
 
 async def _validate(hass, user_input: dict[str, Any]) -> dict[str, str]:
-    """Doe een proefzoekopdracht; geeft een foutcode terug of een lege dict."""
+    """Controleer de keuze; geeft een foutcode terug of een lege dict.
+
+    Alleen Aldi heeft een sleutel en wordt met een proefzoekopdracht getest.
+    Hoogvliet heeft geen instellingen nodig.
+    """
+    stores = user_input.get(CONF_STORES) or []
+    if not stores:
+        return {"base": "no_store"}
+    if STORE_ALDI not in stores:
+        return {}
+    if not str(user_input.get(CONF_API_KEY, "")).strip():
+        return {CONF_API_KEY: "api_key_required"}
+
     client = AldiClient(
         async_get_clientsession(hass),
         user_input[CONF_APP_ID],

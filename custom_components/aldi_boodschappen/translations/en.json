@@ -3,13 +3,14 @@
     "step": {
       "user": {
         "title": "Aldi Shopping List",
-        "description": "Search uses aldi.nl's own search service. For the key: open aldi.nl, press F12, choose Network → Fetch/XHR, search the web shop and look at the request to algolia.net: the value of x-algolia-api-key.",
+        "description": "Choose which stores to search. Pick both to search everywhere at once and see which product is cheapest. The Algolia key is only needed for Aldi: open aldi.nl, press F12, choose Network → Fetch/XHR, search the web shop and copy the value of x-algolia-api-key from the request to algolia.net. Hoogvliet needs no settings; its prices come from the open Checkjebon project and are refreshed daily.",
         "data": {
           "reset_enabled": "Start new week automatically",
           "reset_weekday": "Reset day",
           "reset_hour": "Reset hour (0-23)",
           "app_id": "Algolia Application ID",
-          "api_key": "Algolia API key (search only)"
+          "api_key": "Algolia API key (search only)",
+          "stores": "Stores to search"
         }
       }
     },
@@ -18,7 +19,9 @@
     },
     "error": {
       "invalid_auth": "Aldi rejected this key or Application ID. Check them and try again.",
-      "cannot_connect": "Could not reach Aldi's search service. Try again later."
+      "cannot_connect": "Could not reach Aldi's search service. Try again later.",
+      "no_store": "Choose at least one store.",
+      "api_key_required": "Aldi needs an Algolia key."
     }
   },
   "options": {
@@ -30,13 +33,16 @@
           "reset_weekday": "Reset day",
           "reset_hour": "Reset hour (0-23)",
           "app_id": "Algolia Application ID",
-          "api_key": "Algolia API key (search only)"
+          "api_key": "Algolia API key (search only)",
+          "stores": "Stores to search"
         }
       }
     },
     "error": {
       "invalid_auth": "Aldi rejected this key or Application ID. Check them and try again.",
-      "cannot_connect": "Could not reach Aldi's search service. Try again later."
+      "cannot_connect": "Could not reach Aldi's search service. Try again later.",
+      "no_store": "Choose at least one store.",
+      "api_key_required": "Aldi needs an Algolia key."
     }
   },
   "selector": {
@@ -49,6 +55,12 @@
         "fri": "Friday",
         "sat": "Saturday",
         "sun": "Sunday"
+      }
+    },
+    "stores": {
+      "options": {
+        "aldi": "Aldi",
+        "hoogvliet": "Hoogvliet"
       }
     }
   },

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +17,8 @@ from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.event import async_track_time_change
+from homeassistant.helpers.event import async_track_time_change, async_track_time_interval
+from homeassistant.helpers.storage import Store
 
 from .api import AldiApiError, AldiClient
 from .const import (
@@ -26,19 +27,27 @@ from .const import (
     CONF_RESET_ENABLED,
     CONF_RESET_HOUR,
     CONF_RESET_WEEKDAY,
+    CONF_STORES,
     DEFAULT_RESET_ENABLED,
     DEFAULT_RESET_HOUR,
     DEFAULT_APP_ID,
     DEFAULT_RESET_WEEKDAY,
+    DEFAULT_STORES,
     DOMAIN,
+    HOOGVLIET_STORAGE_KEY,
     PANEL_ICON,
     PANEL_TITLE,
     PANEL_URL,
     SIGNAL_UPDATED,
     STATIC_URL,
+    STORAGE_VERSION,
+    STORE_ALDI,
+    STORE_HOOGVLIET,
     WEEKDAYS,
 )
+from .hoogvliet import HoogvlietClient
 from .manager import ShoppingManager
+from .search import SearchService
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,6 +79,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     websocket_api.async_register_command(hass, ws_update)
     websocket_api.async_register_command(hass, ws_remove)
     websocket_api.async_register_command(hass, ws_new_week)
+    websocket_api.async_register_command(hass, ws_refresh_prices)
     websocket_api.async_register_command(hass, ws_subscribe)
     return True
 
@@ -78,17 +88,71 @@ def _runtime(hass: HomeAssistant) -> dict[str, Any] | None:
     return hass.data.get(DOMAIN, {}).get("runtime")
 
 
+async def async_refresh_prices(hass: HomeAssistant) -> int:
+    """Zoek de producten op de lijst opnieuw op en werk hun prijs bij."""
+    runtime = _runtime(hass)
+    if runtime is None:
+        return 0
+    manager: ShoppingManager = runtime["manager"]
+    search: SearchService = runtime["search"]
+
+    codes = {i["code"] for i in manager.items if i.get("code")}
+    names = list(dict.fromkeys(i["name"] for i in manager.items if i.get("code")))
+    updates: dict[str, dict[str, Any]] = {}
+    for name in names[:40]:  # begrenzen: één zoekopdracht per uniek product
+        try:
+            results = await search.lookup(name)
+        except AldiApiError as err:
+            _LOGGER.warning("Prijzen bijwerken afgebroken: %s", err)
+            break
+        for product in results:
+            if product["code"] in codes:
+                updates[product["code"]] = {
+                    "price": product["price"],
+                    "price_valid_until": product["price_valid_until"],
+                }
+    return manager.update_prices(updates)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     options = {**entry.data, **entry.options}
 
     manager = ShoppingManager(hass)
     await manager.async_load()
-    client = AldiClient(
-        async_get_clientsession(hass),
-        options.get(CONF_APP_ID, DEFAULT_APP_ID),
-        options.get(CONF_API_KEY, ""),
-    )
-    hass.data[DOMAIN]["runtime"] = {"manager": manager, "client": client}
+    session = async_get_clientsession(hass)
+
+    # Winkels waarin gezocht wordt (instelbaar). Bestaande installaties zonder
+    # deze instelling zoeken alleen bij Aldi, zoals voorheen.
+    stores = options.get(CONF_STORES) or DEFAULT_STORES
+    clients: dict[str, Any] = {}
+    if STORE_ALDI in stores:
+        clients[STORE_ALDI] = AldiClient(
+            session,
+            options.get(CONF_APP_ID, DEFAULT_APP_ID),
+            options.get(CONF_API_KEY, ""),
+        )
+    if STORE_HOOGVLIET in stores:
+        hoogvliet = HoogvlietClient(
+            session, Store(hass, STORAGE_VERSION, HOOGVLIET_STORAGE_KEY)
+        )
+        clients[STORE_HOOGVLIET] = hoogvliet
+        # De prijzen staan in een groot bestand: ophalen op de achtergrond, zodat
+        # het opstarten van Home Assistant er niet op wacht, en daarna dagelijks.
+        entry.async_create_background_task(
+            hass, hoogvliet.async_refresh_safe(), "aldi_boodschappen hoogvliet"
+        )
+
+        async def _daily_hoogvliet(now: datetime) -> None:
+            await hoogvliet.async_refresh_safe()
+
+        entry.async_on_unload(
+            async_track_time_interval(hass, _daily_hoogvliet, timedelta(hours=24))
+        )
+
+    hass.data[DOMAIN]["runtime"] = {
+        "manager": manager,
+        "search": SearchService(clients),
+    }
 
     # Paneel in de zijbalk
     await panel_custom.async_register_panel(
@@ -112,6 +176,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if WEEKDAYS[now.weekday()] == weekday:
                 _LOGGER.debug("Automatische reset voor nieuwe week")
                 manager.new_week()
+                hass.async_create_task(async_refresh_prices(hass))
 
         entry.async_on_unload(
             async_track_time_change(hass, _weekly, hour=hour, minute=0, second=0)
@@ -120,6 +185,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Services
     async def _handle_new_week(call: ServiceCall) -> None:
         manager.new_week()
+        await async_refresh_prices(hass)
 
     async def _handle_add_item(call: ServiceCall) -> None:
         manager.add(
@@ -186,11 +252,11 @@ async def ws_search(hass: HomeAssistant, connection, msg) -> None:
     if runtime is None:
         return
     try:
-        results = await runtime["client"].search(msg["query"])
+        results, warnings = await runtime["search"].search(msg["query"])
     except AldiApiError as err:
         connection.send_error(msg["id"], "search_failed", str(err))
         return
-    connection.send_result(msg["id"], {"results": results})
+    connection.send_result(msg["id"], {"results": results, "warnings": warnings})
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/items"})
@@ -263,7 +329,17 @@ def ws_new_week(hass: HomeAssistant, connection, msg) -> None:
     if runtime is None:
         return
     runtime["manager"].new_week()
+    hass.async_create_task(async_refresh_prices(hass))
     connection.send_result(msg["id"], {})
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/refresh_prices"})
+@websocket_api.async_response
+async def ws_refresh_prices(hass: HomeAssistant, connection, msg) -> None:
+    if _ensure_runtime(hass, connection, msg) is None:
+        return
+    updated = await async_refresh_prices(hass)
+    connection.send_result(msg["id"], {"updated": updated})
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/subscribe"})

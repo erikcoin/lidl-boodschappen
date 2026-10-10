@@ -16,11 +16,14 @@ PRODUCT_FIELDS = (
     "brand",
     "description",
     "price",
+    "price_valid_until",
     "old_price",
     "base_price",
     "currency",
     "image",
     "url",
+    "store",
+    "store_name",
 )
 
 
@@ -50,7 +53,7 @@ class ShoppingManager:
         quantity: int = 1,
         recurring: bool = False,
     ) -> dict[str, Any]:
-        """Voeg een item toe. Hetzelfde Aldi-product wordt samengevoegd."""
+        """Voeg een item toe. Hetzelfde product (zelfde winkel en code) wordt samengevoegd."""
         code = product.get("code") if product else None
         if code:
             existing = next((i for i in self.items if i.get("code") == code), None)
@@ -98,6 +101,21 @@ class ShoppingManager:
             self._changed()
             return True
         return False
+
+    def update_prices(self, updates: dict[str, dict[str, Any]]) -> int:
+        """Werk prijzen bij op basis van productcode. Geeft het aantal wijzigingen."""
+        changed = 0
+        for item in self.items:
+            new = updates.get(item.get("code") or "")
+            if not new:
+                continue
+            for field in ("price", "price_valid_until"):
+                if field in new and item.get(field) != new[field]:
+                    item[field] = new[field]
+                    changed += 1
+        if changed:
+            self._changed()
+        return changed
 
     def new_week(self) -> None:
         """Nieuwe week: afgevinkte eenmalige items weg, terugkerende weer 'te halen'."""

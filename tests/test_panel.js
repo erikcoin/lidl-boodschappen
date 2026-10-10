@@ -1,0 +1,47 @@
+// Test van de rekenlogica in het paneel (draaien met: node tests/test_panel.js)
+const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
+const vm = require("vm");
+
+const file = path.join(__dirname, "..", "custom_components", "aldi_boodschappen", "frontend", "aldi-boodschappen-panel.js");
+const ctx = { HTMLElement: class {}, customElements: { define() {} }, console };
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync(file, "utf8"), ctx);
+const { computeTotals, sortResults } = ctx;
+
+// ---- totalen
+const NOW = 1_000_000;
+const items = [
+  { id: "1", price: 2.99, quantity: 3, checked: false, store_name: "Aldi" },
+  { id: "2", price: 2.49, quantity: 1, checked: false, store_name: "Hoogvliet" },
+  { id: "3", price: 1.0, quantity: 2, checked: true, store_name: "Aldi" }, // al gehaald
+  { id: "4", price: null, quantity: 1, checked: false }, // losse tekst, geen prijs
+  { id: "5", price: 4.0, quantity: 1, checked: false, price_valid_until: NOW - 1 }, // oude Aldi-regel zonder winkelnaam, verlopen
+];
+const t = computeTotals(items, NOW);
+assert.strictEqual(Math.round(t.todoSum * 100) / 100, 2.99 * 3 + 2.49 + 4.0);
+assert.strictEqual(t.doneSum, 2.0);
+assert.strictEqual(t.noPrice, 1);
+assert.strictEqual(t.stale, 1);
+assert.strictEqual(Object.keys(t.byStore).sort().join(), "Aldi,Hoogvliet", "item zonder winkelnaam telt als Aldi");
+assert.strictEqual(Math.round(t.byStore.Aldi * 100) / 100, Math.round((2.99 * 3 + 4.0) * 100) / 100);
+assert.strictEqual(t.byStore.Hoogvliet, 2.49);
+// (objecten uit de vm hebben een ander prototype, dus vergelijken we als JSON)
+assert.strictEqual(JSON.stringify(computeTotals([], NOW)), JSON.stringify({ todoSum: 0, doneSum: 0, noPrice: 0, stale: 0, byStore: {} }));
+
+// ---- sorteren
+const r = [
+  { n: "a", price: 3, unit_price: 0.5, unit_label: "per stuk" },
+  { n: "b", price: 1, unit_price: 4, unit_label: "per kg" },
+  { n: "c", price: null, unit_price: null, unit_label: null },
+  { n: "d", price: 2, unit_price: 2, unit_label: "per kg" },
+  { n: "e", price: 5, unit_price: 1, unit_label: "per liter" },
+];
+const names = (l) => l.map((x) => x.n).join("");
+assert.strictEqual(names(sortResults(r, "relevance")), "abcde");
+assert.strictEqual(names(sortResults(r, "price")), "bdaec", "laagste prijs eerst, zonder prijs onderaan");
+assert.strictEqual(names(sortResults(r, "unit")), "dbeac", "per kg, dan per liter, dan per stuk; zonder eenheid onderaan");
+assert.strictEqual(names(r), "abcde", "de bronlijst blijft ongewijzigd");
+
+console.log("ok: totalen en sorteren kloppen");

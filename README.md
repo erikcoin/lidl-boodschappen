@@ -1,29 +1,58 @@
 # Aldi Boodschappen voor Home Assistant
 
-Boodschappenlijst met producten uit het Aldi-assortiment (aldi.nl).
+Boodschappenlijst met producten van **Aldi** en/of **Hoogvliet**, met prijzen. Kies in de instellingen in welke winkels je zoekt; kies je beide, dan zie je welk product het goedkoopst is.
 
-- Typ een zoekterm (bijv. *kwark*) en kies uit alle gevonden Aldi-producten.
+- Typ een zoekterm (bijv. *pink lady*) en kies uit alle gevonden producten, met hoeveelheid en prijs (bij Aldi ook met foto).
+- **Prijzen vergelijken**: zoeken gaat over alle gekozen winkels tegelijk. Elk resultaat toont de prijs per kg, liter of stuk, je kunt sorteren op laagste prijs, en het goedkoopste product per eenheid krijgt een label.
 - Markeer per product of het **elke week** terug moet komen.
+- **Totaalprijs** van wat je nog moet halen, met een apart bedrag voor wat al in de wagen ligt en, als je bij meerdere winkels koopt, een subtotaal per winkel.
 - Eigen paneel **Boodschappen** in de zijbalk (live gesynchroniseerd tussen apparaten).
 - Dezelfde lijst is beschikbaar als `todo.boodschappen`, dus ook bruikbaar in dashboards, automatiseringen en via Assist.
 - **Nieuwe week**: afgevinkte eenmalige producten verdwijnen, terugkerende producten staan weer op "te halen". Dit gebeurt automatisch op een dag/tijd naar keuze, of via de knop/service.
 
-> Dit is een onofficiële integratie en staat los van Aldi.
+> Dit is een onofficiële integratie en staat los van Aldi en Hoogvliet.
 
-## Hoe het zoeken werkt
+## Hoe het zoeken werkt: Aldi
 
-Aldi heeft geen zoek-API. aldi.nl publiceert wel een sitemap met alle productpagina's, en `robots.txt` staat het ophalen daarvan toe. De integratie:
+De Aldi-webshop zoekt via een externe zoekdienst (Algolia). De integratie stuurt dezelfde zoekopdracht als de site, alleen naar de productenindex en met 48 in plaats van 1000 resultaten. Je krijgt dus ook varianten die niet in de naam staan: zoek je *pink lady*, dan vind je *Appels Pink Lady (6 stuks)*, met foto en prijs. Resultaten worden 10 minuten onthouden.
 
-1. haalt die sitemap op (één verzoek) en bewaart de productlijst lokaal; daarna hooguit één keer per week opnieuw;
-2. zoekt zelf in die lijst terwijl je typt, dus het zoekveld doet **geen** verzoeken naar Aldi;
-3. haalt pas bij **Toevoegen** de ene productpagina op voor de foto en de merknaam (best effort).
+### De sleutel invullen (alleen voor Aldi)
 
-Beperkingen:
+Als je Aldi kiest, vraagt de integratie om een **Algolia API-sleutel**. Dat is de openbare, alleen-zoeken-sleutel die aldi.nl naar elke bezoeker stuurt; hij staat bewust niet in deze repository.
 
-- **Geen prijzen.** Aldi toont die niet op de productpagina's.
-- De zoeknaam komt uit de URL van de productpagina (bijv. *Volle kwark*). Na het toevoegen wordt dit de volledige titel inclusief merk, als die opgehaald kon worden.
-- Een product staat er alleen in als Aldi de pagina in de sitemap zet. Wat je niet vindt, voeg je toe als losse tekst.
-- De sitemap en pagina-indeling zijn niet gegarandeerd stabiel. Gaat er iets mis, zet dan logging aan (`custom_components.aldi_boodschappen: debug` onder `logger:`).
+1. Open aldi.nl in Chrome en druk op **F12**.
+2. Kies **Netwerk** → **Fetch/XHR** en zoek iets in de webshop.
+3. Klik het verzoek aan dat naar `algolia.net` gaat. In de URL staat `x-algolia-api-key=…`; kopieer die waarde.
+4. De **Application ID** (`2HU29PF6BH`) is al ingevuld.
+
+De sleutel wordt bij het opslaan met een proefzoekopdracht gecontroleerd.
+
+## Hoogvliet
+
+hoogvliet.nl verbiedt in `robots.txt` voor bots het zoekpad (`/search`) en de Intershop-API waar de webshop zijn data vandaan haalt. Daar maakt deze integratie dan ook **geen** gebruik van. In plaats daarvan gebruikt hij de open prijsdata van [Checkjebon](https://github.com/supermarkt/checkjebon) (MIT-licentie; de data mag volgens het project hergebruikt worden):
+
+- Het bestand wordt hooguit één keer per dag opgehaald, op de achtergrond, en alleen de Hoogvliet-producten worden lokaal bewaard. Zoeken doet dus geen verzoeken naar Hoogvliet.
+- Het eerste ophalen duurt even (het bestand bevat alle supermarkten). Zoek je daarvoor al, dan krijg je een melding dat de prijzen nog worden opgehaald, en de Aldi-resultaten staan er gewoon.
+- Dit zijn de prijzen zoals Checkjebon ze het laatst heeft vastgelegd, **geen live prijzen** van de webshop, en er zijn **geen foto's**. Check voor het boodschappen doen de prijs van belangrijke producten.
+- Het bestand is groot. Op een Raspberry Pi met weinig geheugen kan het verwerken veel werkgeheugen kosten; kies dan alleen Aldi.
+- De structuur van het Checkjebon-bestand is niet door mij kunnen worden bekeken toen ik dit bouwde. De verwerking is defensief geschreven, en bij een onverwachte structuur staat in het log welke winkels er wel in stonden. Zet voor details `custom_components.aldi_boodschappen: debug` aan.
+
+## Prijzen vergelijken
+
+Pakketten verschillen van grootte, dus de losse prijs zegt weinig. Daarom rekent de integratie de hoeveelheid uit de omschrijving ("6 stuks", "500 g", "2 x 250 g", "75 cl") om naar een prijs per kg, per liter of per stuk. Het goedkoopste product per eenheid krijgt het label *Goedkoopst*, mits er minstens twee producten met dezelfde eenheid te vergelijken zijn. Producten waarvan de hoeveelheid niet te lezen is, krijgen geen eenheidsprijs en doen niet mee. Let op dat het vergelijkt wat je zoekt: bij *melk* kan het goedkoopste product per liter ook een ander soort melk zijn.
+
+### Totaalprijs en prijzen bijwerken
+
+Onder de lijst staat het totaal van de producten die je nog moet halen (prijs × aantal). Producten zonder prijs, zoals losse tekst, tellen niet mee en worden apart vermeld.
+
+Prijzen veranderen, vooral bij aanbiedingen, en een terugkerend product blijft weken op je lijst staan. Daarom bewaart de integratie tot wanneer een prijs geldt. Is die datum voorbij, dan staat er een waarschuwing bij het product en onder het totaal. Met **Prijzen bijwerken** zoekt de integratie de producten op je lijst opnieuw op en haalt de actuele prijs binnen. Dat gebeurt ook automatisch bij een nieuwe week.
+
+### Beperkingen
+
+- **Onofficieel.** Aldi kan de sleutel vervangen of de index hernoemen; zoeken geeft dan een foutmelding. Haal dan een nieuwe sleutel op zoals hierboven en vul hem in onder *Configureren*. Is de indexnaam veranderd (nu `an_prd_nl_nl_products2`), dan moet `ALGOLIA_INDEX` in `const.py` aangepast worden.
+- Bij Aldi is de prijs de actuele prijs uit de zoekdienst. Producten die niet beschikbaar zijn staan onderaan en zijn zo gemarkeerd.
+- Staat iets er niet tussen, voeg het dan toe als losse tekst.
+- Foutmeldingen staan in het log; zet voor meer detail `custom_components.aldi_boodschappen: debug` onder `logger:`.
 
 ## Installatie via HACS
 

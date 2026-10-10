@@ -3,13 +3,14 @@
     "step": {
       "user": {
         "title": "Aldi Boodschappen",
-        "description": "Zoeken gebruikt de zoekdienst van aldi.nl. Voor de sleutel: open aldi.nl, druk op F12, kies Netwerk → Fetch/XHR, zoek op iets in de webshop en kijk bij het verzoek naar algolia.net: de waarde van x-algolia-api-key.",
+        "description": "Kies in welke winkels je zoekt. Kies je beide, dan zoekt hij overal tegelijk en zie je welk product het goedkoopst is. De Algolia-sleutel is alleen nodig voor Aldi: open aldi.nl, druk op F12, kies Netwerk → Fetch/XHR, zoek iets in de webshop en kopieer bij het verzoek naar algolia.net de waarde van x-algolia-api-key. Hoogvliet heeft geen instellingen nodig; de prijzen komen van het open project Checkjebon en worden dagelijks bijgewerkt.",
         "data": {
           "reset_enabled": "Automatisch nieuwe week starten",
           "reset_weekday": "Dag van de reset",
           "reset_hour": "Uur van de reset (0-23)",
           "app_id": "Algolia Application ID",
-          "api_key": "Algolia API-sleutel (alleen zoeken)"
+          "api_key": "Algolia API-sleutel (alleen zoeken)",
+          "stores": "Winkels om in te zoeken"
         }
       }
     },
@@ -18,7 +19,9 @@
     },
     "error": {
       "invalid_auth": "Aldi weigert deze sleutel of Application ID. Controleer ze en probeer het opnieuw.",
-      "cannot_connect": "Kon de zoekdienst van Aldi niet bereiken. Probeer het later opnieuw."
+      "cannot_connect": "Kon de zoekdienst van Aldi niet bereiken. Probeer het later opnieuw.",
+      "no_store": "Kies minstens één winkel.",
+      "api_key_required": "Voor Aldi is een Algolia-sleutel nodig."
     }
   },
   "options": {
@@ -30,13 +33,16 @@
           "reset_weekday": "Dag van de reset",
           "reset_hour": "Uur van de reset (0-23)",
           "app_id": "Algolia Application ID",
-          "api_key": "Algolia API-sleutel (alleen zoeken)"
+          "api_key": "Algolia API-sleutel (alleen zoeken)",
+          "stores": "Winkels om in te zoeken"
         }
       }
     },
     "error": {
       "invalid_auth": "Aldi weigert deze sleutel of Application ID. Controleer ze en probeer het opnieuw.",
-      "cannot_connect": "Kon de zoekdienst van Aldi niet bereiken. Probeer het later opnieuw."
+      "cannot_connect": "Kon de zoekdienst van Aldi niet bereiken. Probeer het later opnieuw.",
+      "no_store": "Kies minstens één winkel.",
+      "api_key_required": "Voor Aldi is een Algolia-sleutel nodig."
     }
   },
   "selector": {
@@ -49,6 +55,12 @@
         "fri": "Vrijdag",
         "sat": "Zaterdag",
         "sun": "Zondag"
+      }
+    },
+    "stores": {
+      "options": {
+        "aldi": "Aldi",
+        "hoogvliet": "Hoogvliet"
       }
     }
   },

@@ -57,6 +57,8 @@ class AldiShoppingList(TodoListEntity):
                 description_parts.append("🔁 Wekelijks terugkerend")
             if item.get("price") is not None:
                 description_parts.append(f"€ {item['price']:.2f}")
+            if item.get("store_name"):
+                description_parts.append(item["store_name"])
             items.append(
                 TodoItem(
                     uid=item["id"],

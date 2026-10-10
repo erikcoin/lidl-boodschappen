@@ -21,6 +21,8 @@ from .const import (
     PRODUCT_BASE_URL,
     SEARCH_CACHE_SECONDS,
     SEARCH_LIMIT,
+    STORE_ALDI,
+    STORE_LABELS,
     USER_AGENT,
 )
 
@@ -70,11 +72,15 @@ def parse_hit(hit: Any) -> dict[str, Any] | None:
 
     price_obj = hit.get("currentPrice")
     price = None
+    price_valid_until = None
     if isinstance(price_obj, dict):
         try:
             price = float(price_obj["priceValue"])
         except (KeyError, TypeError, ValueError):
             price = None
+        valid = price_obj.get("validUntil")
+        if isinstance(valid, (int, float)):
+            price_valid_until = int(valid)  # unix-seconden
 
     unit = hit.get("salesUnit")
     return {
@@ -83,12 +89,15 @@ def parse_hit(hit: Any) -> dict[str, Any] | None:
         "brand": None,  # zit al in de naam
         "description": unit if isinstance(unit, str) and unit else None,
         "price": price,
+        "price_valid_until": price_valid_until,
         "old_price": None,
         "base_price": None,
         "currency": "€",
         "image": _primary_image(hit.get("assets")),
         "url": url,
         "available": hit.get("isAvailable") is not False,
+        "store": STORE_ALDI,
+        "store_name": STORE_LABELS[STORE_ALDI],
     }
 
 
