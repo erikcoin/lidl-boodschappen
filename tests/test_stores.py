@@ -287,3 +287,17 @@ assert asyncio.run(svc.enrich({"store": "hoogvliet", "name": "y"})) == {"store":
 assert asyncio.run(svc.enrich({"name": "los"})) == {"name": "los"}, "zonder winkel: ongewijzigd"
 
 print("ok: eenheden, goedkoopst, Checkjebon-verwerking, zoeken en samenvoegen kloppen")
+
+
+# ---------------------------------------------------------------- linkvormen van Checkjebon
+_l = hoogvliet._link
+full = "https://www.hoogvliet.com/product/pink-lady-726992000"
+assert _l(full) == full
+assert _l("/product/pink-lady-726992000") == full
+assert _l("product/pink-lady-726992000") == full
+assert _l("www.hoogvliet.com/product/pink-lady-726992000") == full
+assert _l("pink-lady-726992000") == full
+assert _l("pink lady!") is None and _l("") is None and _l(None) is None
+assert _l("pink-lady-726992000", "https://www.hoogvliet.com/product/") == full
+assert hoogvliet.image_url(_l("pink-lady-726992000")) == "https://static.hoogvliet.nl/ecom/product/726992000.jpg"
+print("linkvormen ok")

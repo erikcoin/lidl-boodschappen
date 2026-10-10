@@ -140,6 +140,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             session, Store(hass, STORAGE_VERSION, HOOGVLIET_STORAGE_KEY)
         )
         clients[STORE_HOOGVLIET] = hoogvliet
+
+        def _backfill_hoogvliet() -> None:
+            # Producten die al op de lijst staan: ontbrekende link en foto aanvullen
+            codes = {
+                i["code"]
+                for i in manager.items
+                if i.get("store") == STORE_HOOGVLIET
+                and i.get("code")
+                and not (i.get("url") and i.get("image"))
+            }
+            if codes:
+                manager.backfill_missing(hoogvliet.public_by_codes(codes))
+
+        hoogvliet.add_listener(_backfill_hoogvliet)
         # De prijzen staan in een groot bestand: ophalen op de achtergrond, zodat
         # het opstarten van Home Assistant er niet op wacht, en daarna dagelijks.
         entry.async_create_background_task(

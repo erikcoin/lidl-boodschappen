@@ -131,6 +131,21 @@ class ShoppingManager:
             self._changed()
         return changed
 
+    def backfill_missing(self, products_by_code: dict[str, dict[str, Any]]) -> int:
+        """Vul ontbrekende link en foto aan van items die al op de lijst stonden."""
+        changed = 0
+        for item in self.items:
+            product = products_by_code.get(item.get("code") or "")
+            if not product:
+                continue
+            for field in ("url", "image"):
+                if not item.get(field) and product.get(field):
+                    item[field] = product[field]
+                    changed += 1
+        if changed:
+            self._changed()
+        return changed
+
     def new_week(self) -> None:
         """Nieuwe week: afgevinkte eenmalige items weg, terugkerende weer 'te halen'."""
         self.items = [

@@ -79,3 +79,7 @@ De workflow `release.yml` zet de versie in `manifest.json` gelijk aan de tag en 
 | --- | --- |
 | `aldi_boodschappen.new_week` | Nieuwe week starten (zie hierboven) |
 | `aldi_boodschappen.add_item` | Product toevoegen (`name`, `quantity`, `recurring`) |
+
+### Hoogvliet zonder link of foto
+
+Staat er in de Checkjebon-data geen (herkenbare) productlink, dan is een Hoogvliet-product in de lijst toch klikbaar (het opent de zoekpagina van Hoogvliet), maar is er geen foto. In dat geval staat er een regel in het Home Assistant-log: *"Geen bruikbare productlinks in de Hoogvliet-data"*, met de velden en een voorbeeld uit het bestand. Met die regel is het te verhelpen.

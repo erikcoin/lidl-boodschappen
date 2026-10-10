@@ -122,4 +122,15 @@ assert n == 1 and m2.items[0]["image"] == "IMG:1" and m2.items[1]["image"] == "h
 assert m2.items[2]["image"] is None and m2.items[3]["image"] is None
 assert m2.backfill_images(lambda i: None) == 0
 
+# ontbrekende link en foto aanvullen via productcode; bestaande waarden blijven
+m3 = manager_mod.ShoppingManager(hass=None)
+m3.items = [
+    {"id": "1", "code": "a|1", "url": None, "image": None},
+    {"id": "2", "code": "b|1", "url": "oud", "image": None},
+    {"id": "3", "code": "zzz", "url": None, "image": None},
+]
+n = m3.backfill_missing({"a|1": {"url": "U", "image": "I"}, "b|1": {"url": "nieuw", "image": "J"}})
+assert n == 3 and m3.items[0]["url"] == "U" and m3.items[1]["url"] == "oud" and m3.items[1]["image"] == "J"
+assert m3.items[2]["url"] is None
+
 print("ok:", len(products), "producten uit antwoord verwerkt, prijzen en totaal kloppen")

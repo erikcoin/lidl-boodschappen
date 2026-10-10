@@ -8,7 +8,7 @@ const file = path.join(__dirname, "..", "custom_components", "aldi_boodschappen"
 const ctx = { HTMLElement: class {}, customElements: { define() {} }, console };
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(file, "utf8"), ctx);
-const { computeTotals, sortResults } = ctx;
+const { computeTotals, sortResults, itemUrl } = ctx;
 
 // ---- totalen
 const NOW = 1_000_000;
@@ -45,3 +45,9 @@ assert.strictEqual(names(sortResults(r, "unit")), "dbeac", "per kg, dan per lite
 assert.strictEqual(names(r), "abcde", "de bronlijst blijft ongewijzigd");
 
 console.log("ok: totalen en sorteren kloppen");
+
+assert.strictEqual(itemUrl({ url: "https://x/y", store: "aldi", name: "a" }), "https://x/y");
+assert.strictEqual(itemUrl({ store: "hoogvliet", name: "pink lady" }), "https://www.hoogvliet.com/search/pink%20lady");
+assert.strictEqual(itemUrl({ store: "aldi", name: "melk" }), "https://www.aldi.nl/zoeken.html?query=melk");
+assert.strictEqual(itemUrl({ name: "" }), null);
+console.log("itemUrl ok");

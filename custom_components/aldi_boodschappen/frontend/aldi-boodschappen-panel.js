@@ -41,6 +41,16 @@ const money = (v, cur = "€") =>
 /* Producten die vóór de winkelkeuze zijn toegevoegd hebben geen winkelnaam: dat waren altijd Aldi-producten. */
 const storeOf = (item) => item.store_name || "Aldi";
 
+/* Link van een item; zonder eigen link een zoekpagina van de winkel, zodat er altijd iets te klikken is. */
+function itemUrl(it) {
+  if (it.url) return it.url;
+  const q = encodeURIComponent(it.name || "");
+  if (!q) return null;
+  if (it.store === "hoogvliet") return `https://www.hoogvliet.com/search/${q}`;
+  if (it.store === "aldi") return `https://www.aldi.nl/zoeken.html?query=${q}`;
+  return null;
+}
+
 /* Totalen van de lijst. Pure functie, zodat hij los getest kan worden. */
 function computeTotals(items, nowSec) {
   const todo = items.filter((i) => !i.checked);
@@ -360,8 +370,9 @@ class AldiBoodschappenPanel extends HTMLElement {
         const sub = [it.store_name, it.description, it.price != null ? money(it.price * it.quantity, it.currency) : ""]
           .filter(Boolean)
           .join(" · ");
-        const nameHtml = it.url
-          ? `<a href="${escapeHtml(it.url)}" target="_blank" rel="noopener">${escapeHtml(it.name)}</a>`
+        const href = itemUrl(it);
+        const nameHtml = href
+          ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(it.name)}</a>`
           : escapeHtml(it.name);
         return `
         <div class="row ${it.checked ? "done" : ""}">

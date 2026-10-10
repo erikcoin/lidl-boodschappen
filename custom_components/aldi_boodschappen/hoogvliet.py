@@ -23,6 +23,7 @@ import logging
 import re
 import time
 import unicodedata
+from collections.abc import Callable
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
@@ -111,13 +112,41 @@ def image_url(url: Any) -> str | None:
     return IMAGE_URL.format(id=pid) if pid else None
 
 
-def _link(value: Any) -> str | None:
+_SLUG_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._~%-]*")
+_PATH_RE = re.compile(r"[A-Za-z0-9._~%/-]+")
+
+# Verwerking van het Checkjebon-bestand. Ophogen als de uitkomst anders wordt, zodat
+# een eerder opgeslagen catalogus meteen opnieuw wordt opgebouwd.
+PARSER_VERSION = 2
+
+
+def _link(value: Any, base: Any = None) -> str | None:
+    """Maak er een volledige productlink van, welke vorm Checkjebon die ook geeft.
+
+    Herkent: een volledige URL, '//host/pad', '/pad', 'pad/naam', 'www.hoogvliet.com/pad'
+    en alleen een naam-met-nummer ('pink-lady-appels-op-schaal-726992000'). Een winkel-
+    breed voorvoegsel (`base`) uit het bestand gaat voor op ons eigen domein.
+    """
     if not isinstance(value, str) or not value.strip():
         return None
     value = value.strip()
+    if value.startswith(("http://", "https://")):
+        return value
+    if value.startswith("//"):
+        return f"https:{value}"
+    if "/" in value and urlparse(f"//{value}").hostname in _HOSTS:
+        return f"https://{value}"
+
+    prefix = base.strip().rstrip("/") if isinstance(base, str) and base.startswith("http") else None
+    root = prefix or HOOGVLIET_BASE_URL
     if value.startswith("/"):
-        return f"{HOOGVLIET_BASE_URL}{value}"
-    return value if value.startswith("http") else None
+        return f"{root}{value}"
+    if "/" in value:
+        return f"{root}/{value}" if _PATH_RE.fullmatch(value) else None
+    if _SLUG_RE.fullmatch(value):
+        has_path = bool(prefix and urlparse(prefix).path.strip("/"))
+        return f"{root}/{value}" if has_path else f"{root}/product/{value}"
+    return None
 
 
 def parse_checkjebon(raw: bytes | str) -> list[dict[str, Any]]:
@@ -140,6 +169,7 @@ def parse_checkjebon(raw: bytes | str) -> list[dict[str, Any]]:
 
     labels: list[str] = []
     raw_products: Any = None
+    store: dict[str, Any] = {}
     for store in data:
         if not isinstance(store, dict):
             continue
@@ -155,6 +185,9 @@ def parse_checkjebon(raw: bytes | str) -> list[dict[str, Any]]:
             labels[:25],
         )
         raise HoogvlietError("Hoogvliet staat niet in de Checkjebon-data (structuur veranderd?)")
+
+    # Sommige bronnen zetten het voorvoegsel van de links één keer bij de winkel
+    base = _first(store.get("u"), store.get("url"), store.get("base"), store.get("link"), store.get("l"))
 
     products: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -172,9 +205,14 @@ def parse_checkjebon(raw: bytes | str) -> list[dict[str, Any]]:
         if price <= 0:
             continue
         size = _first(entry.get("s"), entry.get("size"))
-        link = _link(_first(entry.get("l"), entry.get("link"), entry.get("url")))
+        link = _link(
+            _first(entry.get("l"), entry.get("link"), entry.get("url"), entry.get("href"), entry.get("u")),
+            base,
+        )
         name = name.strip()
-        code = link or f"{name}|{size or ''}"
+        # Altijd naam + hoeveelheid, ook als er een link is: zo blijft de code gelijk
+        # tussen versies, en dus ook voor producten die al op de lijst staan.
+        code = f"{name}|{size or ''}"
         if code in seen:
             continue
         seen.add(code)
@@ -195,6 +233,13 @@ def parse_checkjebon(raw: bytes | str) -> list[dict[str, Any]]:
             raw_products[:2],
         )
         raise HoogvlietError("Geen bruikbare Hoogvliet-producten in de Checkjebon-data")
+    if not any(p["url"] for p in products):
+        # Zonder link zijn er geen klikbare producten en geen foto's: laat zien wat er wél staat
+        _LOGGER.warning(
+            "Geen bruikbare productlinks in de Hoogvliet-data. Velden van de winkel: %s. Voorbeeld: %r",
+            sorted(store),
+            raw_products[:2],
+        )
     return products
 
 
@@ -208,6 +253,21 @@ class HoogvlietClient:
         self._fetched_at = 0.0
         self._loaded = False
         self._task: asyncio.Task | None = None
+        self._listeners: list[Callable[[], None]] = []
+
+    def add_listener(self, listener: Callable[[], None]) -> None:
+        """Aanroepen nadat de catalogus is geladen of ververst (ook als verversen mislukte)."""
+        self._listeners.append(listener)
+
+    def _notify(self) -> None:
+        for listener in self._listeners:
+            try:
+                listener()
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("Fout in een Hoogvliet-luisteraar")
+
+    def public_by_codes(self, codes: set[str]) -> dict[str, dict[str, Any]]:
+        return {p["code"]: self._public(p) for p in self._products if p["code"] in codes}
 
     @property
     def ready(self) -> bool:
@@ -222,7 +282,9 @@ class HoogvlietClient:
         data = await self._store.async_load()
         if isinstance(data, dict) and data.get("products"):
             self._products = data["products"]
-            self._fetched_at = float(data.get("fetched_at", 0))
+            # Is de catalogus met een oudere verwerking gemaakt, dan meteen opnieuw ophalen
+            fresh = data.get("version") == PARSER_VERSION
+            self._fetched_at = float(data.get("fetched_at", 0)) if fresh else 0.0
 
     async def _download(self) -> bytes:
         try:
@@ -258,7 +320,7 @@ class HoogvlietClient:
         _LOGGER.debug("Hoogvliet-prijzen ververst: %s producten", len(products))
         if self._store is not None:
             await self._store.async_save(
-                {"fetched_at": self._fetched_at, "products": products}
+                {"version": PARSER_VERSION, "fetched_at": self._fetched_at, "products": products}
             )
 
     async def async_refresh_safe(self) -> None:
@@ -267,6 +329,8 @@ class HoogvlietClient:
             await self.async_refresh()
         except AldiApiError as err:
             _LOGGER.warning("Hoogvliet-prijzen verversen mislukt: %s", err)
+        finally:
+            self._notify()
 
     def _kick_refresh(self) -> None:
         if self._task is None or self._task.done():
